@@ -1,7 +1,15 @@
+
+
 import math
 import time
 from utils.brick import Motor, EV3ColorSensor, wait_ready_sensors, reset_brick
 
+from utils.brick import EV3ColorSensor
+s = EV3ColorSensor(4)
+print("Port 4 Status:", s.get_status())
+wait_ready_sensors()
+reset_brick()
+exit()
 # ----------------- HARDWARE SETUP -----------------
 left_motor = Motor("B")
 right_motor = Motor("C")
