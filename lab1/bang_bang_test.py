@@ -45,17 +45,17 @@ if __name__ == "__main__":
                 counter = 0
             ## Turn Right    
             if d < BAND_CENTER - BAND_WIDTH:
-                move(120, -80)
+                move(155, -80)
                 time.sleep(0.75)
-            elif counter > 75:
+            elif counter > 50:
                 ##move(200, 0)
                 ##time.sleep(0.1)
-                move(260,  75)
-                time.sleep(0.5)
+                move(360,  75)
+                time.sleep(0.7)
             elif d > BAND_CENTER + BAND_WIDTH:
-                move(140, 90)
+                move(155, 60)
             else:
-                move(90,-10)
+                move(90,-20)
             
 
 #            error = min(-30, max(KP*(TARGET_DIST - d),30))
