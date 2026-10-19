@@ -3,20 +3,13 @@
 import math
 import time
 from utils.brick import Motor, EV3ColorSensor, wait_ready_sensors, reset_brick
-
-from utils.brick import EV3ColorSensor
-s = EV3ColorSensor(4)
-print("Port 4 Status:", s.get_status())
-wait_ready_sensors()
-reset_brick()
-exit()
 # ----------------- HARDWARE SETUP -----------------
 left_motor = Motor("B")
 right_motor = Motor("C")
 
 # Two downward-facing color sensors mounted symmetrically on left and right
-left_color = EV3ColorSensor(1)
-right_color = EV3ColorSensor(2)
+left_color = EV3ColorSensor(2)
+right_color = EV3ColorSensor(4)
 
 # ----------------- ROBOT CONSTANTS -----------------
 # Calibrate these constants with your actual physical measurements
@@ -24,29 +17,29 @@ WHEEL_RADIUS = 2.1        # Radius of wheels in cm (standard EV3 drive wheel ~ 2
 TRACK_WIDTH = 12.0         # Distance between wheel contact points in cm
 TILE_SIZE = 30.0          # Standard grid tile spacing in cm
 LINE_THRESHOLD = 30        # Reflected light intensity threshold for black line detection
-SENSOR_OFFSET = 3.0        # Distance in cm from wheel axle to color sensors
+SENSOR_OFFSET = 13.0        # Distance in cm from wheel axle to color sensors
 
 FORWARD_DPS = 150
 ALIGN_DPS = 60
 TURN_DPS = 100
-
+IGNORE_RED_CTR_START = 100 
 # ----------------- ODOMETRY STATE -----------------
 # S-point initial coordinates (adjust according to your starting tile convention)
-x = 0.0
-y = 0.0
+x = -15.0
+y = -15.0
 theta = 0.0                # Degrees: 0deg is +y, 90deg is +x, 180deg is -y, 270deg is -x
 
 prev_encoder_l = 0
 prev_encoder_r = 0
 odometer_initialized = False
-
+ignore_red_counter = 0
 
 def update_odometer():
     """Updates (x, y, theta) from motor encoders and prints to console."""
     global x, y, theta, prev_encoder_l, prev_encoder_r, odometer_initialized
 
-    enc_l = left_motor.get_encoder()
-    enc_r = right_motor.get_encoder()
+    enc_l = -left_motor.get_encoder()
+    enc_r = -right_motor.get_encoder()
 
     if enc_l is None or enc_r is None:
         return
@@ -82,8 +75,9 @@ def update_odometer():
 
     # Ensure theta stays within [0.0, 359.9]
     theta = (theta + delta_theta_deg) % 360.0
-
-    print(f"X: {x:6.2f} cm | Y: {y:6.2f} cm | θ: {theta:5.1f}deg")
+    left_red = left_color.get_red() 
+    right_red =  right_color.get_red()
+    print(f"X: {x:6.2f} cm | Y: {y:6.2f} cm | θ: {theta:5.1f}deg | L_RED: {left_red} | R_RED: {right_red}")
 
 
 def float_motors():
@@ -98,8 +92,8 @@ def float_motors():
 
 # ----------------- MOTION HELPERS -----------------
 def drive(left_dps, right_dps):
-    left_motor.set_dps(left_dps)
-    right_motor.set_dps(right_dps)
+    left_motor.set_dps(-left_dps)
+    right_motor.set_dps(-right_dps)
 
 
 def stop_motors():
@@ -130,7 +124,7 @@ def align_on_line(nominal_heading: float, line_axis_val: float, is_y_axis: bool)
     Stops the wheel that detected the line first and crawls the other wheel
     forward until it also detects the line, re-aligning the robot.
     """
-    global theta, x, y
+    global theta, x, y, ignore_red_counter
 
     # Let the remaining wheel catch up to square up with the line
     left_hit = (left_color.get_red() or 100) < LINE_THRESHOLD
@@ -140,13 +134,13 @@ def align_on_line(nominal_heading: float, line_axis_val: float, is_y_axis: bool)
         drive(0, ALIGN_DPS)
         while (right_color.get_red() or 100) >= LINE_THRESHOLD:
             update_odometer()
-            time.sleep(0.005)
+            time.sleep(0.1)
     elif right_hit and not left_hit:
         drive(ALIGN_DPS, 0)
         while (left_color.get_red() or 100) >= LINE_THRESHOLD:
             update_odometer()
-            time.sleep(0.005)
-
+            time.sleep(0.1)
+    ignore_red_counter = IGNORE_RED_CTR_START
     stop_motors()
 
     # Snap heading and axis coordinate based on known grid line geometry
@@ -161,11 +155,12 @@ def align_on_line(nominal_heading: float, line_axis_val: float, is_y_axis: bool)
 
     # Push forward slightly off the line so sensors don't trigger again immediately
     drive(FORWARD_DPS, FORWARD_DPS)
-    time.sleep(0.3)
+    time.sleep(1.0)
 
 
 def drive_leg(distance_cm: float, nominal_heading: float, is_y_axis: bool):
     """Drives forward for distance_cm, correcting on lines along the way."""
+    global ignore_red_counter
     start_x = x
     start_y = y
     drive(FORWARD_DPS, FORWARD_DPS)
@@ -173,14 +168,20 @@ def drive_leg(distance_cm: float, nominal_heading: float, is_y_axis: bool):
     while True:
         update_odometer()
         traveled = math.hypot(x - start_x, y - start_y)
-
+        ignore_red_counter -= 1
         # Check line detection for odometry correction
         val_l = left_color.get_red() or 100
         val_r = right_color.get_red() or 100
 
-        if val_l < LINE_THRESHOLD or val_r < LINE_THRESHOLD:
+        if ignore_red_counter <= 0 and (val_l < LINE_THRESHOLD or val_r < LINE_THRESHOLD):
             # Estimate which grid line was intercepted (nearest 30.48 cm multiple)
             curr_coord = y if is_y_axis else x
+            if is_y_axis:
+                # Facing 0deg or 180deg: heading along Y
+                curr_coord = y + SENSOR_OFFSET if nominal_heading == 0 else y - SENSOR_OFFSET
+            else:
+                # Facing 90deg or 270deg: heading along X
+                curr_coord = x + SENSOR_OFFSET if nominal_heading == 90 else x - SENSOR_OFFSET
             est_line = round(curr_coord / TILE_SIZE) * TILE_SIZE
             align_on_line(nominal_heading, est_line, is_y_axis)
             drive(FORWARD_DPS, FORWARD_DPS)
@@ -218,6 +219,10 @@ def square_driver():
 # ----------------- MAIN ENTRY POINT -----------------
 if __name__ == "__main__":
     wait_ready_sensors(True)
+    #reset_brick()
+    #while True:
+    #    print("LEFT:", left_color.get_red(), "RIGHT:", right_color.get_red())
+
     try:
         # Prompt for demo mode:
         # 'f' for float_motors demo, 's' for square_driver demo
