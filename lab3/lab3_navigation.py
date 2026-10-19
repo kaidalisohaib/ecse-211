@@ -11,8 +11,8 @@ left_motor = Motor("B")
 right_motor = Motor("C")
 
 # Two downward-facing color sensors mounted symmetrically on left (Port 2) and right (Port 4)
-left_color = EV3ColorSensor(2)
-right_color = EV3ColorSensor(4)
+left_color = EV3ColorSensor(4)
+right_color = EV3ColorSensor(2)
 
 # ==================== ROBOT CONSTANTS (FROM LAB 2) ====================
 WHEEL_RADIUS = 2.1        # Radius of wheels in cm (calibrated in Lab 2)
