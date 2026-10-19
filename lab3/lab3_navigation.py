@@ -19,7 +19,7 @@ WHEEL_RADIUS = 2.1        # Radius of wheels in cm (calibrated in Lab 2)
 TRACK_WIDTH = 12.0        # Distance between wheel contact points in cm (calibrated in Lab 2)
 TILE_SIZE = 30.48         # Grid tile spacing in cm (30.48 cm per Lab 3 handout; use 30.0 if using 30 cm grid)
 LINE_THRESHOLD = 30       # Reflected red light threshold for black line detection
-SENSOR_OFFSET = 13.0      # Distance in cm from wheel axle to color sensors (calibrated in Lab 2)
+SENSOR_OFFSET = 6.0      # Distance in cm from wheel axle to color sensors (calibrated in Lab 2)
 
 FORWARD_DPS = 150
 ALIGN_DPS = 60
