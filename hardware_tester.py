@@ -21,6 +21,7 @@ for _candidate in (_HERE, os.path.join(_HERE, "lab3"), os.path.join(_HERE, "lab2
         break
 
 from utils.brick import (
+    BP,
     Motor,
     EV3ColorSensor,
     EV3UltrasonicSensor,
@@ -142,15 +143,27 @@ def test_motors():
 
     try:
         while True:
-            # Read current status snapshot
+            # Read battery voltage & current motor status snapshot
+            try:
+                v_bat = BP.get_voltage_battery()
+                bat_str = f"Battery: {v_bat:.2f}V" + (" [LOW VOLTAGE - TURN ON BATTERY SWITCH!]" if v_bat < 7.0 else " [OK]")
+            except Exception:
+                bat_str = "Battery: N/A"
+
             status_parts = []
             for p, m in motors.items():
-                enc = m.get_encoder()
-                spd = m.get_speed()
-                pwr = m.get_power()
-                status_parts.append(f"Port {p}: [Enc={enc} deg | Spd={spd} dps | Pwr={pwr}%]")
+                flags, pwr, enc, spd = m.get_status()
+                flag_warnings = []
+                if isinstance(flags, int):
+                    if flags & 0x01:
+                        flag_warnings.append("LOW_VOLTAGE_FLOAT(Battery OFF/Low!)")
+                    if flags & 0x02:
+                        flag_warnings.append("OVERLOADED(Stalled/Pin 1-2 Loose!)")
+                flag_str = f" | Flags={','.join(flag_warnings)}" if flag_warnings else ""
+                status_parts.append(f"Port {p}: [Enc={enc} deg | Spd={spd} dps | Pwr={pwr}%{flag_str}]")
 
-            print("\n" + "  ||  ".join(status_parts))
+            print(f"\n{bat_str}")
+            print("  ||  ".join(status_parts))
             print("Commands:")
             print("  <number>       : Set speed in DPS (e.g. '150', '-150', '0')"
                   + (" or two numbers e.g. '150 -150'" if len(ports) == 2 else ""))
@@ -199,7 +212,7 @@ def test_motors():
                 try:
                     while True:
                         line = " | ".join(
-                            f"Port {p}: Enc={m.get_encoder()} deg, Spd={m.get_speed()} dps, Pwr={m.get_power()}%"
+                            f"Port {p}: Enc={m.get_encoder()} deg, Spd={m.get_speed()} dps, Pwr={m.get_power()}%, Flags={m.get_status()[0]}"
                             for p, m in motors.items()
                         )
                         print(f"\r{line}      ", end="", flush=True)
@@ -210,15 +223,17 @@ def test_motors():
             elif cmd.startswith("p "):
                 parts = cmd.split()[1:]
                 try:
-                    vals = [float(x) for x in parts]
+                    vals = [int(float(x)) for x in parts]
                     if len(vals) == 1:
                         for m in motors.values():
+                            m.set_limits(power=0, dps=0)
                             m.set_power(vals[0])
-                        print(f"-> Set power to {vals[0]:.0f}% on {port_label}.")
+                        print(f"-> Set power to {vals[0]}% on {port_label}.")
                     elif len(vals) == len(ports):
                         for p, val in zip(ports, vals):
+                            motors[p].set_limits(power=0, dps=0)
                             motors[p].set_power(val)
-                        print("-> Set individual powers: " + ", ".join(f"{p}={v:.0f}%" for p, v in zip(ports, vals)))
+                        print("-> Set individual powers: " + ", ".join(f"{p}={v}%" for p, v in zip(ports, vals)))
                     else:
                         print(f"Provide 1 value or {len(ports)} values.")
                 except ValueError:
@@ -227,11 +242,11 @@ def test_motors():
             elif cmd.startswith("deg "):
                 parts = cmd.split()[1:]
                 try:
-                    deg_val = float(parts[0])
+                    deg_val = int(float(parts[0]))
                     for m in motors.values():
-                        m.set_limits(power=60, dps=200)
-                        m.set_position_relative(int(deg_val))
-                    print(f"-> Rotating {deg_val:+.0f} degrees relative...")
+                        m.set_limits(power=80, dps=300)
+                        m.set_position_relative(deg_val)
+                    print(f"-> Rotating {deg_val:+d} degrees relative...")
                 except (ValueError, IndexError):
                     print("Invalid degree value. Example: 'deg 360' or 'deg -90'.")
 
@@ -239,15 +254,17 @@ def test_motors():
                 # Parse direct DPS number(s), e.g. "150" or "-150" or "150 -150"
                 parts = cmd.replace(",", " ").split()
                 try:
-                    vals = [float(x) for x in parts]
+                    vals = [int(float(x)) for x in parts]
                     if len(vals) == 1:
                         for m in motors.values():
-                            m.set_dps(vals[0])
-                        print(f"-> Set speed to {vals[0]:.0f} DPS on {port_label}.")
+                            m.set_limits(power=0, dps=0)
+                            m.brick.set_motor_dps(m.port, vals[0])
+                        print(f"-> Set speed to {vals[0]} DPS on {port_label}.")
                     elif len(vals) == len(ports):
                         for p, val in zip(ports, vals):
-                            motors[p].set_dps(val)
-                        print("-> Set individual speeds: " + ", ".join(f"{p}={v:.0f} DPS" for p, v in zip(ports, vals)))
+                            motors[p].set_limits(power=0, dps=0)
+                            motors[p].brick.set_motor_dps(motors[p].port, val)
+                        print("-> Set individual speeds: " + ", ".join(f"{p}={v} DPS" for p, v in zip(ports, vals)))
                     else:
                         print(f"Unrecognized command. Enter 1 speed or {len(ports)} speeds.")
                 except ValueError:
