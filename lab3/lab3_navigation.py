@@ -4,7 +4,7 @@ from utils.brick import Motor, EV3ColorSensor, wait_ready_sensors, reset_brick
 
 # ==================== DEMO WAYPOINTS ====================
 # Enter the 4 waypoints specified by the TA (in grid units, starting from (0, 0))
-WAYPOINTS = [(2, 1), (1, 1), (2, 2), (2, 0)]
+WAYPOINTS = [(2, 2), (1, 1), (0, 1), (2, 2)]
 
 # ==================== HARDWARE CONFIG ====================
 left_motor = Motor("B")
@@ -16,10 +16,10 @@ right_color = EV3ColorSensor(2)
 
 # ==================== ROBOT CONSTANTS (FROM LAB 2) ====================
 WHEEL_RADIUS = 2.1        # Radius of wheels in cm (calibrated in Lab 2)
-TRACK_WIDTH = 12.0        # Distance between wheel contact points in cm (calibrated in Lab 2)
+TRACK_WIDTH = 12.00        # Distance between wheel contact points in cm (calibrated in Lab 2)
 TILE_SIZE = 30.48         # Grid tile spacing in cm (30.48 cm per Lab 3 handout; use 30.0 if using 30 cm grid)
 LINE_THRESHOLD = 30       # Reflected red light threshold for black line detection
-SENSOR_OFFSET = 6.1      # Distance in cm from wheel axle to color sensors (calibrated in Lab 2) # For shortest, 7.4 seems better result
+SENSOR_OFFSET = 7.0      # Distance in cm from wheel axle to color sensors (calibrated in Lab 2) # For shortest, 7.4 seems better result
 
 FORWARD_DPS = 150
 ALIGN_DPS = 60
@@ -126,7 +126,7 @@ def turn_to(target_heading: float):
         update_odometer()
         diff = minimal_angle_diff(target_heading, theta)
         # Stop when within tolerance or if we just crossed the target angle
-        if abs(diff) < 2.5 or (direction == 1 and diff < 0) or (direction == -1 and diff > 0):
+        if abs(diff) < 0.5 or (direction == 1 and diff < 0) or (direction == -1 and diff > 0):
             break
         time.sleep(0.01)
 
