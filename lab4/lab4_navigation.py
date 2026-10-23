@@ -29,17 +29,39 @@ conveyor_motor = Motor("D")   # Rear conveyor belt motor on Port MD
 left_color = EV3ColorSensor(4)
 right_color = EV3ColorSensor(2)
 
-# ==================== ROBOT & DELIVERY CONSTANTS ====================
+# ==================== ROBOT & CONTROL CONSTANTS ====================
 WHEEL_RADIUS = 2.1            # Radius of drive wheels in cm
-TRACK_WIDTH = 12.00           # Distance between wheel contact points in cm
+LEFT_WHEEL_SCALE = 1.00       # Fine-tune (e.g. 1.01) if robot systematically curves right on straight drives
+RIGHT_WHEEL_SCALE = 1.00      # Fine-tune (e.g. 1.01) if robot systematically curves left on straight drives
+
+TRACK_WIDTH = 12.00           # Nominal distance between wheel contact points in cm
+TRACK_WIDTH_CW = TRACK_WIDTH  # Effective track width for clockwise turns (increase if CW turns stop short)
+TRACK_WIDTH_CCW = TRACK_WIDTH # Effective track width for counter-clockwise turns (increase if CCW turns stop short)
+
 TILE_SIZE = 30.48             # Grid tile spacing in cm (30.48 cm per Lab 4 handout)
 LINE_THRESHOLD = 30           # Reflected red light threshold for black line detection
 SENSOR_OFFSET = 7.0           # Distance in cm from wheel axle to color sensors
 
-FORWARD_DPS = 150
-ALIGN_DPS = 60
-TURN_DPS = 100
-IGNORE_RED_CTR_START = 100
+# Speeds, trapezoidal motion profiling & closed-loop yaw control gains
+FORWARD_DPS = 150             # Cruise speed (deg/s)
+MIN_DRIVE_DPS = 45            # Gentle launch & final creep speed (deg/s) for zero-skid stops
+LINE_APPROACH_DPS = 75        # Reduced speed right before hitting an expected black grid line
+ALIGN_DPS = 50                # Single-wheel squaring crawl speed on black line
+ACCEL_RAMP_SEC = 0.25         # Soft acceleration ramp duration (s) to prevent wheel spin & cube jolt
+DECEL_DIST_CM = 8.0           # Distance (cm) before target to smoothly decelerate down to MIN_DRIVE_DPS
+LINE_SLOWDOWN_DIST_CM = 6.0   # Distance (cm) before expected grid line to ease down to LINE_APPROACH_DPS
+
+TURN_DPS_MAX = 100            # Peak turn speed (deg/s)
+TURN_DPS_MIN = 32             # Minimum crawl speed near target heading to prevent overshoot
+KP_TURN = 2.8                 # Proportional slow-down gain for turns (starts slowing within ~25 deg)
+KP_DRIVE_HEADING = 2.0        # Active heading-hold gain during straight segments (fights skid drag)
+MAX_HEADING_CORR_DPS = 25     # Max differential steering correction while driving straight
+
+# Parallel-line & false-trigger protection
+IGNORE_RED_CTR_START = 80
+LINE_WINDOW_CM = 6.5          # Only accept line hits within +-6.5 cm of an expected perpendicular grid line
+MAX_ALIGN_SWEEP_DEG = 16.0    # Abort single-wheel pivot if robot rotates >16 deg (prevents spinning on parallel line)
+MAX_ALIGN_TIME_SEC = 1.2      # Timeout guard on single-wheel line alignment
 
 # Conveyor delivery settings (tested: -90 deg per cube on Port MD)
 CONVEYOR_DEG_PER_CUBE = -90   # Motor D rotation in degrees to deploy 1 foam cube
@@ -62,15 +84,20 @@ prev_encoder_l = 0
 prev_encoder_r = 0
 odometer_initialized = False
 ignore_red_counter = 0
+odom_print_counter = 0
 
 conveyor_target_deg = 0
 conveyor_initialized = False
 
 
-# ==================== ODOMETRY ====================
-def update_odometer():
-    """Updates (x, y, theta) from drive motor encoders and prints state to console."""
-    global x, y, theta, prev_encoder_l, prev_encoder_r, odometer_initialized
+# ==================== FAST ODOMETRY ====================
+def update_odometer(log_sensors: bool = False):
+    """
+    Updates (x, y, theta) from drive motor encoders at high frequency.
+    Avoids unnecessary color-sensor SPI polling and throttles console printing
+    so loop latency never causes turn overshoot or discretization drift.
+    """
+    global x, y, theta, prev_encoder_l, prev_encoder_r, odometer_initialized, odom_print_counter
 
     raw_l = left_motor.get_encoder()
     raw_r = right_motor.get_encoder()
@@ -94,35 +121,40 @@ def update_odometer():
     prev_encoder_l = enc_l
     prev_encoder_r = enc_r
 
-    # Arc distances traveled by each wheel in cm
-    dist_l = (d_l_deg * math.pi / 180.0) * WHEEL_RADIUS
-    dist_r = (d_r_deg * math.pi / 180.0) * WHEEL_RADIUS
+    # Arc distances traveled by each wheel in cm (with optional left/right wheel scale calibration)
+    dist_l = (d_l_deg * math.pi / 180.0) * (WHEEL_RADIUS * LEFT_WHEEL_SCALE)
+    dist_r = (d_r_deg * math.pi / 180.0) * (WHEEL_RADIUS * RIGHT_WHEEL_SCALE)
     delta_dist = (dist_l + dist_r) / 2.0
 
-    # Angular change in degrees (positive = clockwise, matching compass convention)
-    delta_theta_rad = (dist_l - dist_r) / TRACK_WIDTH
+    # Directional effective track width (accounts for asymmetric rear-skid friction CW vs CCW)
+    eff_track = TRACK_WIDTH_CW if (dist_l - dist_r) >= 0 else TRACK_WIDTH_CCW
+    delta_theta_rad = (dist_l - dist_r) / eff_track
     delta_theta_deg = math.degrees(delta_theta_rad)
 
-    # Average heading for linear displacement approximation
+    # Exact midpoint RK2 integration (or arc integration)
     avg_theta_rad = math.radians(theta + (delta_theta_deg / 2.0))
 
     # Convention: 0 deg = +y, 90 deg = +x
     x += delta_dist * math.sin(avg_theta_rad)
     y += delta_dist * math.cos(avg_theta_rad)
-
-    # Ensure theta stays within [0.0, 360.0)
     theta = (theta + delta_theta_deg) % 360.0
 
-    left_red = left_color.get_red()
-    right_red = right_color.get_red()
-    print(f"X: {x:6.2f} cm | Y: {y:6.2f} cm | θ: {theta:5.1f}deg | L_RED: {left_red} | R_RED: {right_red}")
+    odom_print_counter += 1
+    if odom_print_counter >= 20:
+        odom_print_counter = 0
+        if log_sensors:
+            l_red = left_color.get_red()
+            r_red = right_color.get_red()
+            print(f"X: {x:6.2f} cm | Y: {y:6.2f} cm | θ: {theta:5.1f}deg | L_RED: {l_red} | R_RED: {r_red}")
+        else:
+            print(f"X: {x:6.2f} cm | Y: {y:6.2f} cm | θ: {theta:5.1f}deg")
 
 
-# ==================== MOTION HELPERS ====================
-def drive(left_dps, right_dps):
+# ==================== MOTION & CLOSED-LOOP YAW HELPERS ====================
+def drive(left_dps: float, right_dps: float):
     """Drives wheels with inverted polarity matching physical motor orientation."""
-    left_motor.set_dps(-left_dps)
-    right_motor.set_dps(-right_dps)
+    left_motor.set_dps(-int(round(left_dps)))
+    right_motor.set_dps(-int(round(right_dps)))
 
 
 def stop_drive_motors():
@@ -147,46 +179,92 @@ def minimal_angle_diff(target_deg: float, current_deg: float) -> float:
     return ((target_deg - current_deg + 180.0) % 360.0) - 180.0
 
 
+def drive_with_heading_hold(base_dps: float, target_heading: float):
+    """
+    Applies a proportional heading-hold controller on top of base_dps (works in
+    both forward and reverse) to counteract yaw drift from rear-skid drag.
+    """
+    err = minimal_angle_diff(target_heading, theta)
+    corr = max(-MAX_HEADING_CORR_DPS, min(MAX_HEADING_CORR_DPS, KP_DRIVE_HEADING * err))
+    drive(base_dps + corr, base_dps - corr)
+
+
 def turn_to(target_heading: float):
-    """Rotates the robot in place to target_heading using the minimal angle."""
+    """
+    Rotates in place to target_heading using the minimal angle with:
+      1. Soft acceleration ramp (prevents initial tire slip against rear skid), and
+      2. Proportional deceleration near target (prevents rotational inertia overshoot).
+    Color sensors are completely ignored during turns.
+    """
     target_heading = target_heading % 360.0
     update_odometer()
     diff = minimal_angle_diff(target_heading, theta)
 
-    # Skip turn if already aligned
-    if abs(diff) < 2.0:
+    if abs(diff) < 1.2:
         return
 
-    direction = 1 if diff > 0 else -1
-    drive(direction * TURN_DPS, -direction * TURN_DPS)
+    initial_dir = 1 if diff > 0 else -1
+    t_start = time.time()
 
     while True:
         update_odometer()
         diff = minimal_angle_diff(target_heading, theta)
-        # Stop when within tolerance or if we just crossed the target angle
-        if abs(diff) < 0.5 or (direction == 1 and diff < 0) or (direction == -1 and diff > 0):
+
+        # Stop when within tight tolerance or if we just crossed 0
+        if abs(diff) < 0.4 or (initial_dir == 1 and diff < 0) or (initial_dir == -1 and diff > 0):
             break
-        time.sleep(0.01)
+
+        direction = 1 if diff > 0 else -1
+        # Soft start ramp over 0.15s to prevent static-friction wheel slip
+        ramp_scale = min(1.0, (time.time() - t_start) / 0.15)
+        raw_speed = min(TURN_DPS_MAX, max(TURN_DPS_MIN, KP_TURN * abs(diff)))
+        turn_speed = max(TURN_DPS_MIN, raw_speed * ramp_scale)
+
+        drive(direction * turn_speed, -direction * turn_speed)
+        time.sleep(0.008)
 
     stop_drive_motors()
     time.sleep(0.2)
     update_odometer()
 
 
-def drive_straight_distance(distance_cm: float, forward: bool = True):
-    """Drives straight forward or backward by distance_cm using encoder odometry."""
+def compute_trapezoidal_dps(elapsed_sec: float, remaining_cm: float, ceiling_dps: float = FORWARD_DPS) -> float:
+    """
+    Computes a smooth trapezoidal velocity profile combining:
+      - Soft time-based acceleration ramp from MIN_DRIVE_DPS -> ceiling_dps, and
+      - Smooth distance-based deceleration from ceiling_dps -> MIN_DRIVE_DPS near the stop.
+    """
+    accel_dps = MIN_DRIVE_DPS + (ceiling_dps - MIN_DRIVE_DPS) * min(1.0, max(0.0, elapsed_sec) / ACCEL_RAMP_SEC)
+    decel_dps = MIN_DRIVE_DPS + (ceiling_dps - MIN_DRIVE_DPS) * min(1.0, max(0.0, remaining_cm) / DECEL_DIST_CM)
+    return max(MIN_DRIVE_DPS, min(ceiling_dps, accel_dps, decel_dps))
+
+
+def drive_straight_distance(distance_cm: float, forward: bool = True, hold_heading: float | None = None):
+    """
+    Drives straight forward or backward by distance_cm with:
+      - Smooth trapezoidal acceleration & deceleration (no sudden starts/stops), and
+      - Active yaw-hold P-control.
+    Color sensors are completely ignored so crossing lines during drop maneuvers
+    can never trigger a false line alignment.
+    """
     if distance_cm <= 0.1:
         return
 
     update_odometer()
     start_x, start_y = x, y
-    dps = FORWARD_DPS if forward else -FORWARD_DPS
-    drive(dps, dps)
+    lock_heading = theta if hold_heading is None else (hold_heading % 360.0)
+    t_start = time.time()
 
     while True:
         update_odometer()
-        if math.hypot(x - start_x, y - start_y) >= distance_cm:
+        traveled = math.hypot(x - start_x, y - start_y)
+        remaining = distance_cm - traveled
+        if remaining <= 0.0:
             break
+
+        mag_dps = compute_trapezoidal_dps(time.time() - t_start, remaining)
+        signed_dps = mag_dps if forward else -mag_dps
+        drive_with_heading_hold(signed_dps, lock_heading)
         time.sleep(0.01)
 
     stop_drive_motors()
@@ -253,7 +331,7 @@ def deliver_at_waypoint(cube_number: int, waypoint: tuple[int, int], is_last_way
       - True:  Pauses on (gx, gy), steps forward by R = hypot(L, B) along a safe direction phi,
                pivots by -atan2(L, B) so the rear-left conveyor opening is directly over (gx, gy),
                drops the cube dead-center on (gx, gy), waits for board clearing, and reverses back
-               onto (gx, gy) so grid-line navigation continues seamlessly.
+               onto (gx, gy) with heading-hold active (color sensors disabled throughout!).
     """
     target_x = waypoint[0] * TILE_SIZE
     target_y = waypoint[1] * TILE_SIZE
@@ -270,11 +348,9 @@ def deliver_at_waypoint(cube_number: int, waypoint: tuple[int, int], is_last_way
         actuate_conveyor_one_cube(cube_number)
         return
 
-    # Mode 2: Exact-intersection cube placement maneuver
-    # 1. Pause on the waypoint first so TA sees robot reached (gx, gy) within <= 2 cm
+    # Mode 2: Exact-intersection cube placement maneuver (light sensors completely ignored here)
     time.sleep(WAYPOINT_ARRIVAL_PAUSE_SEC)
 
-    # 2. Step forward by R along a board-safe direction phi
     phi = select_safe_step_heading(target_x, target_y, drop_radius, theta)
     beta_deg = math.degrees(math.atan2(DROP_OFFSET_LEFT_CM, DROP_OFFSET_BACK_CM))
     theta_drop = (phi - beta_deg) % 360.0
@@ -284,100 +360,184 @@ def deliver_at_waypoint(cube_number: int, waypoint: tuple[int, int], is_last_way
         f"step {drop_radius:.1f} cm @ {phi:.1f}deg, pivot to {theta_drop:.1f}deg"
     )
     turn_to(phi)
-    drive_straight_distance(drop_radius, forward=True)
+    drive_straight_distance(drop_radius, forward=True, hold_heading=phi)
 
-    # 3. Pivot so (-DROP_OFFSET_LEFT_CM, -DROP_OFFSET_BACK_CM) sits directly over (target_x, target_y)
     turn_to(theta_drop)
     actuate_conveyor_one_cube(cube_number)
 
-    # 4. Return to (target_x, target_y) so robot is back on the grid line for the next leg
     if (not is_last_waypoint) or RETURN_TO_WAYPOINT_ON_LAST_CUBE:
         print(f">>> [CUBE #{cube_number}] Returning wheel axle to Waypoint {waypoint}...")
         turn_to(phi)
-        drive_straight_distance(drop_radius, forward=False)
+        drive_straight_distance(drop_radius, forward=False, hold_heading=phi)
 
 
-# ==================== NAVIGATION + DELIVERY STRATEGIES ====================
+# ==================== LINE ALIGNMENT & SAFEST/SHORTEST NAVIGATION ====================
 def align_on_line(nominal_heading: float, line_axis_val: float, is_y_axis: bool):
     """
-    Stops the wheel that detected the line first and crawls the other wheel
-    forward until it also detects the line, squaring the robot and snapping
-    odometry coordinates.
+    Squares the robot against a perpendicular grid line using both color sensors.
+    Includes a max-angle sweep guard (MAX_ALIGN_SWEEP_DEG) so if a single sensor
+    accidentally grazed a PARALLEL grid line instead of a perpendicular cross-line,
+    it immediately aborts the pivot and restores nominal_heading instead of spinning
+    onto the parallel line!
     """
     global theta, x, y, ignore_red_counter
 
     left_hit = (left_color.get_red() or 100) < LINE_THRESHOLD
     right_hit = (right_color.get_red() or 100) < LINE_THRESHOLD
 
+    start_align_th = theta
+    start_time = time.time()
+    aborted_parallel = False
+
     if left_hit and not right_hit:
         drive(0, ALIGN_DPS)
         while (right_color.get_red() or 100) >= LINE_THRESHOLD:
             update_odometer()
-            time.sleep(0.05)
+            if (
+                abs(minimal_angle_diff(theta, start_align_th)) > MAX_ALIGN_SWEEP_DEG
+                or (time.time() - start_time) > MAX_ALIGN_TIME_SEC
+            ):
+                aborted_parallel = True
+                break
+            time.sleep(0.02)
     elif right_hit and not left_hit:
         drive(ALIGN_DPS, 0)
         while (left_color.get_red() or 100) >= LINE_THRESHOLD:
             update_odometer()
-            time.sleep(0.05)
+            if (
+                abs(minimal_angle_diff(theta, start_align_th)) > MAX_ALIGN_SWEEP_DEG
+                or (time.time() - start_time) > MAX_ALIGN_TIME_SEC
+            ):
+                aborted_parallel = True
+                break
+            time.sleep(0.02)
 
-    ignore_red_counter = IGNORE_RED_CTR_START
     stop_drive_motors()
+    ignore_red_counter = IGNORE_RED_CTR_START
 
-    # Snap heading and axis coordinate based on known grid line geometry and sensor offset
+    if aborted_parallel:
+        print("[GUARD] Parallel-line graze detected during alignment! Aborting snap & restoring heading.")
+        turn_to(nominal_heading)
+        return
+
+    # Valid perpendicular cross-line: snap heading and axis coordinate
     theta = nominal_heading % 360.0
 
     if is_y_axis:
-        # Facing 0deg (+y) or 180deg (-y)
         y = line_axis_val - SENSOR_OFFSET if nominal_heading == 0 else line_axis_val + SENSOR_OFFSET
     else:
-        # Facing 90deg (+x) or 270deg (-x)
         x = line_axis_val - SENSOR_OFFSET if nominal_heading == 90 else line_axis_val + SENSOR_OFFSET
 
-    # Push forward off the black tape (~2.5 cm, safely less than SENSOR_OFFSET = 7.0 cm)
-    drive(FORWARD_DPS, FORWARD_DPS)
+    # Glide gently off the black tape (~1.8 cm at LINE_APPROACH_DPS, safely < SENSOR_OFFSET = 7.0 cm)
     push_start = time.time()
-    while time.time() - push_start < 0.45:
+    while time.time() - push_start < 0.55:
         update_odometer()
+        drive_with_heading_hold(LINE_APPROACH_DPS, nominal_heading)
         time.sleep(0.01)
 
 
-def drive_axis_segment(target_coord: float, nominal_heading: float, is_y_axis: bool):
+def is_expected_cross_line(
+    sensor_coord: float, start_coord: float, target_coord: float, positive_dir: bool
+) -> tuple[bool, float]:
     """
-    Drives straight along an axis (X or Y) to target_coord, correcting heading
-    and position on every grid line intercepted along the way.
+    Returns (is_valid, est_line) checking two spatial gates:
+      1. sensor_coord is within +-LINE_WINDOW_CM of a true grid multiple k * TILE_SIZE
+         (ignores middle-of-tile parallel line grazing).
+      2. est_line lies strictly AHEAD of start_coord up to target_coord
+         (never snaps backward onto the intersection we just departed from).
+    """
+    est_line = round(sensor_coord / TILE_SIZE) * TILE_SIZE
+    if abs(sensor_coord - est_line) > LINE_WINDOW_CM:
+        return False, est_line
+
+    half_tile = 0.5 * TILE_SIZE
+    if positive_dir:
+        valid_range = (start_coord + half_tile) <= est_line <= (target_coord + half_tile)
+    else:
+        valid_range = (target_coord - half_tile) <= est_line <= (start_coord - half_tile)
+
+    return valid_range, est_line
+
+
+def compute_pre_line_ceiling_dps(
+    sensor_coord: float, start_coord: float, target_coord: float, positive_dir: bool
+) -> float:
+    """
+    Smoothly eases speed from FORWARD_DPS down to LINE_APPROACH_DPS when the front
+    sensors get within LINE_SLOWDOWN_DIST_CM (6 cm) of an upcoming grid line, so
+    hitting the black tape never causes an abrupt high-speed brake/nose-dive.
+    """
+    if positive_dir:
+        next_line = math.ceil((sensor_coord - 1.0) / TILE_SIZE) * TILE_SIZE
+        dist_to_line = next_line - sensor_coord
+    else:
+        next_line = math.floor((sensor_coord + 1.0) / TILE_SIZE) * TILE_SIZE
+        dist_to_line = sensor_coord - next_line
+
+    half_tile = 0.5 * TILE_SIZE
+    if positive_dir:
+        in_segment = (start_coord + half_tile) <= next_line <= (target_coord + half_tile)
+    else:
+        in_segment = (target_coord - half_tile) <= next_line <= (start_coord - half_tile)
+
+    if not in_segment or dist_to_line >= LINE_SLOWDOWN_DIST_CM:
+        return FORWARD_DPS
+    if dist_to_line <= 0.0:
+        return LINE_APPROACH_DPS
+
+    ratio = dist_to_line / LINE_SLOWDOWN_DIST_CM
+    return LINE_APPROACH_DPS + (FORWARD_DPS - LINE_APPROACH_DPS) * ratio
+
+
+def drive_axis_segment(start_coord: float, target_coord: float, nominal_heading: float, is_y_axis: bool):
+    """
+    Drives straight along an axis (X or Y) from start_coord to target_coord using:
+      - Smooth trapezoidal acceleration & waypoint deceleration,
+      - Predictive slowdown before each expected black grid line,
+      - Active closed-loop heading hold between grid lines,
+      - Spatial window filtering + max-sweep guard to reject parallel-line false triggers,
+      - Dual color-sensor squaring & coordinate snapping at valid cross-lines.
     """
     global ignore_red_counter
     ignore_red_counter = 0
-
-    drive(FORWARD_DPS, FORWARD_DPS)
+    positive_dir = nominal_heading in (0.0, 90.0)
+    ramp_start_time = time.time()
 
     while True:
-        update_odometer()
+        update_odometer(log_sensors=True)
         ignore_red_counter -= 1
+
+        if is_y_axis:
+            curr_pos = y
+            sensor_coord = y + SENSOR_OFFSET if positive_dir else y - SENSOR_OFFSET
+        else:
+            curr_pos = x
+            sensor_coord = x + SENSOR_OFFSET if positive_dir else x - SENSOR_OFFSET
 
         val_l = left_color.get_red() or 100
         val_r = right_color.get_red() or 100
 
         if ignore_red_counter <= 0 and (val_l < LINE_THRESHOLD or val_r < LINE_THRESHOLD):
-            # Calculate the sensor's coordinate to snap to the nearest grid line
-            if is_y_axis:
-                sensor_coord = y + SENSOR_OFFSET if nominal_heading == 0 else y - SENSOR_OFFSET
-            else:
-                sensor_coord = x + SENSOR_OFFSET if nominal_heading == 90 else x - SENSOR_OFFSET
+            valid_cross_line, est_line = is_expected_cross_line(
+                sensor_coord, start_coord, target_coord, positive_dir
+            )
+            if valid_cross_line:
+                align_on_line(nominal_heading, est_line, is_y_axis)
+                # Refresh position & restart smooth acceleration ramp from LINE_APPROACH_DPS
+                curr_pos = y if is_y_axis else x
+                ramp_start_time = time.time()
 
-            est_line = round(sensor_coord / TILE_SIZE) * TILE_SIZE
-            align_on_line(nominal_heading, est_line, is_y_axis)
-            drive(FORWARD_DPS, FORWARD_DPS)
-
-        # Check if wheel axle has reached target_coord along the travel direction
-        if is_y_axis:
-            reached = (y >= target_coord) if nominal_heading == 0 else (y <= target_coord)
-        else:
-            reached = (x >= target_coord) if nominal_heading == 90 else (x <= target_coord)
-
-        if reached:
+        remaining_cm = (target_coord - curr_pos) if positive_dir else (curr_pos - target_coord)
+        if remaining_cm <= 0.0:
             break
 
+        line_ceiling = (
+            compute_pre_line_ceiling_dps(sensor_coord, start_coord, target_coord, positive_dir)
+            if ignore_red_counter <= 0
+            else FORWARD_DPS
+        )
+        cmd_dps = compute_trapezoidal_dps(time.time() - ramp_start_time, remaining_cm, ceiling_dps=line_ceiling)
+        drive_with_heading_hold(cmd_dps, nominal_heading)
         time.sleep(0.01)
 
     stop_drive_motors()
@@ -389,8 +549,7 @@ def navigate_and_deliver_safest(waypoints):
     """
     Safest Path Navigation + Cube Delivery (Recommended for Lab 4):
     Travels strictly along X and Y grid lines using dual light sensor correction
-    to guarantee <= 2 cm stopping accuracy at every waypoint, delivering 1 cube
-    per waypoint.
+    and closed-loop heading hold to guarantee <= 2 cm accuracy at every waypoint.
     """
     init_conveyor()
     time.sleep(1.0)
@@ -417,20 +576,28 @@ def navigate_and_deliver_safest(waypoints):
         if y_first:
             if dy_grid != 0:
                 turn_to(heading_y)
-                drive_axis_segment(target_gy * TILE_SIZE, heading_y, is_y_axis=True)
+                drive_axis_segment(
+                    current_gy * TILE_SIZE, target_gy * TILE_SIZE, heading_y, is_y_axis=True
+                )
                 current_gy = target_gy
             if dx_grid != 0:
                 turn_to(heading_x)
-                drive_axis_segment(target_gx * TILE_SIZE, heading_x, is_y_axis=False)
+                drive_axis_segment(
+                    current_gx * TILE_SIZE, target_gx * TILE_SIZE, heading_x, is_y_axis=False
+                )
                 current_gx = target_gx
         else:
             if dx_grid != 0:
                 turn_to(heading_x)
-                drive_axis_segment(target_gx * TILE_SIZE, heading_x, is_y_axis=False)
+                drive_axis_segment(
+                    current_gx * TILE_SIZE, target_gx * TILE_SIZE, heading_x, is_y_axis=False
+                )
                 current_gx = target_gx
             if dy_grid != 0:
                 turn_to(heading_y)
-                drive_axis_segment(target_gy * TILE_SIZE, heading_y, is_y_axis=True)
+                drive_axis_segment(
+                    current_gy * TILE_SIZE, target_gy * TILE_SIZE, heading_y, is_y_axis=True
+                )
                 current_gy = target_gy
 
         stop_drive_motors()
@@ -447,7 +614,7 @@ def navigate_and_deliver_shortest(waypoints):
     """
     Shortest Path Navigation + Cube Delivery:
     Travels directly to each waypoint in a straight Euclidean line after rotating
-    by the minimal angle in [-180, 180], delivering 1 cube per waypoint.
+    by the minimal angle in [-180, 180], using closed-loop heading hold while driving.
     """
     init_conveyor()
     time.sleep(1.0)
@@ -466,11 +633,9 @@ def navigate_and_deliver_shortest(waypoints):
         target_dist = math.hypot(dx, dy)
 
         if target_dist >= 0.5:
-            # 0 deg = +y, 90 deg = +x -> atan2(dx, dy)
             target_theta = math.degrees(math.atan2(dx, dy)) % 360.0
             turn_to(target_theta)
-
-            drive_straight_distance(target_dist, forward=True)
+            drive_straight_distance(target_dist, forward=True, hold_heading=target_theta)
 
         # Deliver 1 foam cube at this waypoint (even if consecutive waypoints match)
         deliver_at_waypoint(idx, (target_gx, target_gy), is_last_waypoint=(idx == total))
@@ -517,4 +682,3 @@ if __name__ == "__main__":
     finally:
         stop_all_motors()
         reset_brick()
-
