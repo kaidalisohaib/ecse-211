@@ -71,7 +71,7 @@ RANDOM_CHOICES = {"random": "random board (new each pick; table size from TILE_X
 def read_constants(path=os.path.join(HERE, "snowplow_core.py")):
     """Ports etc. straight from snowplow_core.py without importing it (importing it would set up the
     sensors, which must not happen while a robot script is running)."""
-    want = {"LEFT_DRIVE_PORT": "B", "RIGHT_DRIVE_PORT": "C", "TURRET_OR_DUMP_PORT": "A",
+    want = {"LEFT_DRIVE_PORT": "B", "RIGHT_DRIVE_PORT": "C", "TURRET_PORT": "B", "DUMP_PORT": "A",
             "ROLLER_MOTOR_PORT": "D", "LEFT_COLOR_PORT": 4, "RIGHT_COLOR_PORT": 2,
             "ULTRASONIC_PORT": 3, "LINE_THRESHOLD": 30, "DRIVE_POLARITY": -1, "ROLLER_SWEEP_DPS": 900,
             "ROLLER_SWEEP_POWER": None,
@@ -92,12 +92,13 @@ def read_constants(path=os.path.join(HERE, "snowplow_core.py")):
 
 
 def motor_roles(c, phase):
-    return {
-        c["TURRET_OR_DUMP_PORT"]: "Turret" if phase == 1 else "Dump",
-        c["LEFT_DRIVE_PORT"]: "Left wheel",
-        c["RIGHT_DRIVE_PORT"]: "Right wheel",
-        c["ROLLER_MOTOR_PORT"]: "Not used in Phase 1" if phase == 1 else "Belt",
-    }
+    if phase == 1:      # turret and belt can share a port: the later entry wins
+        roles = {c["DUMP_PORT"]: "Not used in Phase 1", c["ROLLER_MOTOR_PORT"]: "Not used in Phase 1",
+                 c["TURRET_PORT"]: "Turret"}
+    else:
+        roles = {c["TURRET_PORT"]: "Not used in Phase 2", c["ROLLER_MOTOR_PORT"]: "Belt", c["DUMP_PORT"]: "Dump"}
+    roles.update({c["LEFT_DRIVE_PORT"]: "Left wheel", c["RIGHT_DRIVE_PORT"]: "Right wheel"})
+    return roles
 
 
 def sensor_roles(c):
@@ -1220,7 +1221,7 @@ svg.spark{width:100%;height:30px;display:block;margin-top:6px;background:linear-
 <div class="head"><div class="bar">
  <span class="grp"><span id="conn"><span class="dot off"></span>connecting</span><b id="mode">-</b>
   <span class="kv">Battery<b id="bat">-</b></span></span>
- <span class="grp"><span class="lbl" title="Which attachments are on the robot: names motor A (turret or dump) and the belt motor, and which hardware the small actions use. Jobs set it themselves.">Hardware</span><span class="seg"><button data-ph="1" title="Turret + ultrasonic on A">Phase 1</button><button data-ph="2" title="Dump on A, belt on its own port">Phase 2</button></span></span>
+ <span class="grp"><span class="lbl" title="Which attachments are on the robot: names the turret / dump / belt motors, and which hardware the small actions use. Jobs set it themselves.">Hardware</span><span class="seg"><button data-ph="1" title="Turret + ultrasonic (TURRET_PORT)">Phase 1</button><button data-ph="2" title="Dump (DUMP_PORT) + belt (ROLLER_MOTOR_PORT)">Phase 2</button></span></span>
  <span class="grp"><span class="lbl" title="Colour sensor mode for the cards and calibration. The robot code always uses red.">Colour</span><span class="seg"><button data-cm="red" title="Reflected red, 0-100 %: what the robot code uses">Red</button><button data-cm="rgb" title="Raw red/green/blue under the sensor's white light, to compare colours">RGB</button></span></span>
  <span id="simbar" class="grp" style="display:none"><span class="lbl">Map</span><select id="simmap"></select>
   <span class="lbl">Speed</span><select id="simspeed"><option value="1">1x</option><option value="2">2x</option><option value="4">4x</option><option value="8">8x</option></select>

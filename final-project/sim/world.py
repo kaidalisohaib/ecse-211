@@ -28,7 +28,7 @@ T = 30.48
 def _robot_wiring(path=os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "snowplow_core.py")):
     """Ports, drive polarity and nominal geometry straight from snowplow_core.py (not imported: run_sim imports it
     only after the world exists), so the sim follows the robot's wiring."""
-    want = {"LEFT_DRIVE_PORT": "B", "RIGHT_DRIVE_PORT": "C", "TURRET_OR_DUMP_PORT": "A", "ROLLER_MOTOR_PORT": "D",
+    want = {"LEFT_DRIVE_PORT": "B", "RIGHT_DRIVE_PORT": "C", "TURRET_PORT": "A", "ROLLER_MOTOR_PORT": "D",
             "LEFT_COLOR_PORT": 4, "RIGHT_COLOR_PORT": 2, "DRIVE_POLARITY": -1, "SENSOR_SPACING": 12.0,
             "TRACK_WIDTH": 12.0, "WHEEL_RADIUS": 2.10}
     try:
@@ -114,7 +114,7 @@ class World:
         wheel_radius = float(WIRING["WHEEL_RADIUS"]) if wheel_radius is None else wheel_radius
         track_width = float(WIRING["TRACK_WIDTH"]) if track_width is None else track_width
         self.port_l, self.port_r = WIRING["LEFT_DRIVE_PORT"], WIRING["RIGHT_DRIVE_PORT"]
-        self.port_a, self.port_belt = WIRING["TURRET_OR_DUMP_PORT"], WIRING["ROLLER_MOTOR_PORT"]
+        self.port_a, self.port_belt = WIRING["TURRET_PORT"], WIRING["ROLLER_MOTOR_PORT"]
         self.polarity = int(WIRING["DRIVE_POLARITY"])
         self.table = TABLE if table is None else (table[0] * T, (table[1] + 1) * T, table[2] * T, (table[3] + 1) * T)
         self.boxes = set(boxes)

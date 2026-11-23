@@ -39,13 +39,14 @@ import vizlog
 # Ports as wired on the robot (lab, 2026-11-22)
 LEFT_DRIVE_PORT = "C"
 RIGHT_DRIVE_PORT = "D"
-TURRET_OR_DUMP_PORT = "A"     # Phase 1: ultrasonic turret | Phase 2: bin tilt (dump)
+TURRET_PORT = "B"             # Phase 1: ultrasonic turret (the belt's port: the belt motor isn't plugged in then)
+DUMP_PORT = "A"               # Phase 2: bin tilt (dump)
 ROLLER_MOTOR_PORT = "B"       # Phase 2: pinch belt (conveyor)
 DRIVE_POLARITY = -1           # -1 = drive motors mounted backwards (positive dps drives in reverse). bench_tests [2]
 
 LEFT_COLOR_PORT = 1           # Downward left colour sensor
 RIGHT_COLOR_PORT = 2          # Downward right colour sensor
-ULTRASONIC_PORT = 3           # Turret ultrasonic (Phase 1) / fixed ultrasonic (Phase 2, optional)
+ULTRASONIC_PORT = 4           # Turret ultrasonic (Phase 1) / fixed ultrasonic (Phase 2, optional)
 
 # ==================== GEOMETRY & CALIBRATION CONSTANTS ====================
 TILE_SIZE = 30.48
@@ -88,7 +89,7 @@ K_LATERAL_DEG_PER_CM = 1.5    # cross-track: degrees of heading correction per c
 MAX_LATERAL_STEER_DEG = 6.0
 
 # ==================== ULTRASONIC & TURRET (MEASURE / TUNE) ====================
-USE_TURRET = True             # Phase 1 hardware has the turret on port A
+USE_TURRET = True             # Phase 1 hardware has the turret (TURRET_PORT)
 TURRET_GEAR_RATIO = 1.0       # motor degrees per turret degree
 TURRET_DPS = 400
 TURRET_SETTLE_TOL_DEG = 2.0
@@ -166,7 +167,8 @@ MAP_FILE = os.path.join(_HERE, "street_map.json")
 # ==================== GLOBAL HARDWARE & ODOMETRY STATE ====================
 left_motor = Motor(LEFT_DRIVE_PORT)
 right_motor = Motor(RIGHT_DRIVE_PORT)
-aux_motor_a = Motor(TURRET_OR_DUMP_PORT)
+turret_motor = Motor(TURRET_PORT)
+dump_motor = Motor(DUMP_PORT)
 roller_motor = Motor(ROLLER_MOTOR_PORT)
 
 left_color = EV3ColorSensor(LEFT_COLOR_PORT)
@@ -234,7 +236,7 @@ def _read_drive_encoders():
 
 
 def init_hardware(phase: int = 1):
-    """Initializes sensors, latches encoders, loads calibration. phase=1 enables the turret on port A."""
+    """Initializes sensors, latches encoders, loads calibration. phase=1 enables the turret (TURRET_PORT)."""
     global prev_left_deg, prev_right_deg, turret_zero_enc, turret_present, turret_angle
     global x, y, theta, travel_cm, SENSOR_OFFSET
     SENSOR_OFFSET = SENSOR_OFFSET_BY_PHASE.get(phase, SENSOR_OFFSET)
@@ -250,10 +252,10 @@ def init_hardware(phase: int = 1):
     prev_left_deg, prev_right_deg = enc if enc is not None else (None, None)
 
     turret_present = bool(USE_TURRET and phase == 1)
-    turret_zero_enc = aux_motor_a.get_position() or 0
+    turret_zero_enc = turret_motor.get_position() or 0
     turret_angle = 0.0
     if turret_present:
-        aux_motor_a.set_limits(power=80, dps=TURRET_DPS)
+        turret_motor.set_limits(power=80, dps=TURRET_DPS)
 
     x, y, theta, travel_cm = 0.0, 0.0, 0.0, 0.0
     print(f"[INIT] Phase {phase} hardware ready (turret={'on' if turret_present else 'off'}). "
@@ -419,7 +421,8 @@ def stop_drive_motors():
 def stop_all_motors():
     left_motor.set_power(0)
     right_motor.set_power(0)
-    aux_motor_a.set_power(0)
+    dump_motor.set_power(0)
+    turret_motor.set_power(0)
     roller_motor.set_power(0)
 
 
@@ -655,15 +658,15 @@ def set_turret_angle(rel_angle_deg: float, wait: bool = True):
     if not turret_present:
         return
     target_enc = int(round(turret_zero_enc + rel_angle_deg * TURRET_GEAR_RATIO))
-    aux_motor_a.set_limits(power=80, dps=TURRET_DPS)
-    aux_motor_a.set_position(target_enc)
+    turret_motor.set_limits(power=80, dps=TURRET_DPS)
+    turret_motor.set_position(target_enc)
     turret_angle = rel_angle_deg
     if not wait:
         return
     t0 = time.time()
     tol = TURRET_SETTLE_TOL_DEG * abs(TURRET_GEAR_RATIO)
     while time.time() - t0 < TURRET_MOVE_TIMEOUT_SEC:
-        pos = aux_motor_a.get_position()
+        pos = turret_motor.get_position()
         if pos is not None and abs(pos - target_enc) <= tol:
             break
         time.sleep(0.01)
@@ -674,7 +677,7 @@ def turret_at_target() -> bool:
     """True once the turret is within TURRET_SETTLE_TOL_DEG of the angle last set (for non-blocking moves)."""
     if not turret_present:
         return True
-    pos = aux_motor_a.get_position()
+    pos = turret_motor.get_position()
     target = turret_zero_enc + turret_angle * TURRET_GEAR_RATIO
     return pos is not None and abs(pos - target) <= TURRET_SETTLE_TOL_DEG * abs(TURRET_GEAR_RATIO)
 
@@ -1579,10 +1582,10 @@ def stop_intake_roller():
 
 
 def _move_aux_and_wait(target_enc: int, timeout: float = 1.5):
-    aux_motor_a.set_position(int(target_enc))
+    dump_motor.set_position(int(target_enc))
     t0 = time.time()
     while time.time() - t0 < timeout:
-        pos = aux_motor_a.get_position()
+        pos = dump_motor.get_position()
         if pos is not None and abs(pos - target_enc) <= 4:
             break
         time.sleep(0.01)
@@ -1600,8 +1603,8 @@ def dump_snow_payload(direction="+"):
     d = dump_direction(where)
     vizlog.emit("dump", side={"RIGHT": 1, "LEFT": -1, "BACK": 0}[d], dir=d)
     print(f"[DUMP] Motor A {sign * DUMP_TILT_DEG:+.0f} deg: bin pours {d.lower()}...")
-    base = aux_motor_a.get_position() or 0
-    aux_motor_a.set_limits(power=85, dps=300)
+    base = dump_motor.get_position() or 0
+    dump_motor.set_limits(power=85, dps=300)
     full = base + sign * DUMP_TILT_DEG
     _move_aux_and_wait(full)
     for _ in range(DUMP_SHAKES):
@@ -1609,5 +1612,5 @@ def dump_snow_payload(direction="+"):
         _move_aux_and_wait(full, 0.4)
     time.sleep(DUMP_HOLD_SEC)
     _move_aux_and_wait(base)
-    aux_motor_a.set_power(0)
+    dump_motor.set_power(0)
     print("[DUMP] Done.")

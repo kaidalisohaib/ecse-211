@@ -233,8 +233,8 @@ def t_roller():
 def t_dump():
     """Find DUMP_TILT_DEG and where motor + / - pours (DUMP_PLUS / DUMP_MINUS) by jogging the arm."""
     core.init_hardware(phase=2)
-    base = core.aux_motor_a.get_position() or 0
-    core.aux_motor_a.set_limits(power=85, dps=200)
+    base = core.dump_motor.get_position() or 0
+    core.dump_motor.set_limits(power=85, dps=200)
     print("   Enter an arm angle in motor degrees (relative to now), + or -; q = done.")
     print(f"   Now: DUMP_PLUS = {core.DUMP_PLUS!r}, DUMP_MINUS = {core.DUMP_MINUS!r}, DUMP_TILT_DEG = {core.DUMP_TILT_DEG}")
     seen = {}
@@ -254,7 +254,7 @@ def t_dump():
                 seen[1 if last > 0 else -1] = ({"r": "RIGHT", "l": "LEFT", "b": "BACK", "n": None}[way], abs(last))
         core._move_aux_and_wait(base, timeout=3.0)
     core._move_aux_and_wait(base, timeout=3.0)
-    core.aux_motor_a.set_power(0)
+    core.dump_motor.set_power(0)
     for sign, (where, deg) in sorted(seen.items(), reverse=True):
         name = "DUMP_PLUS" if sign > 0 else "DUMP_MINUS"
         print(f"   -> {name} = {where!r}  (now {getattr(core, name)!r}); tipped at {deg} deg")
