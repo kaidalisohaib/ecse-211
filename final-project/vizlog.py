@@ -14,6 +14,7 @@ Events go to:
 Nothing here ever raises into the robot code. If start() was never called, every call is a no-op.
 Everything printed while a phase runs is also sent as "log" events, so the viewer shows the console.
 """
+from __future__ import annotations
 import json
 import os
 import socket

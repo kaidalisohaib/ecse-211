@@ -13,6 +13,7 @@ ECSE 211 Final Design Project - Phase 2: Autonomous Snow Removal
      sideways into it (the bucket is at table height, so the snow only goes sideways).
   6. Returns to the origin.
 """
+from __future__ import annotations
 
 import json
 import os

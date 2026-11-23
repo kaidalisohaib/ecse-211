@@ -17,6 +17,7 @@ as ground truth:
 
 Saves calibration_params.json next to this file (where snowplow_core.py reads it).
 """
+from __future__ import annotations
 
 import json
 import math

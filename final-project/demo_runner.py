@@ -9,6 +9,7 @@ ECSE 211 Final Design Project - Demo Runner & Hardware Tester
   [5] Diagnostics with Phase 2 hardware (sensors, roller, dump tray)
 Fallback over SSH: the usual way to run all of this is the page of `python3 dashboard.py`.
 """
+from __future__ import annotations
 
 import time
 import traceback

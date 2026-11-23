@@ -25,6 +25,7 @@ Motion model (v1, "runs"):
 Everything marked MEASURE must be measured on the real robot; TUNE values need
 real runs. The laptop simulator in sim/ runs this file unchanged.
 """
+from __future__ import annotations
 
 from collections import deque
 import json

@@ -6,6 +6,7 @@ simulator's true wheel radius and track width.
   python3 sim/test_auto_tuner.py                  # sensors 5 cm behind the axle, 5 seeds
   python3 sim/test_auto_tuner.py --offset 7 --seeds 3 --noise 2
 """
+from __future__ import annotations
 import argparse
 import builtins
 import contextlib

@@ -11,6 +11,7 @@ A run fails if the map is wrong, a phase goes over 120 s, Phase 2 touches a hous
 the robot ends > 3 cm from the origin, or the code crashes. Pom-poms below --min-pompoms are listed too.
 Re-run one board with: python3 sim/run_sim.py --map NAME -v
 """
+from __future__ import annotations
 import argparse
 import multiprocessing as mp
 import re

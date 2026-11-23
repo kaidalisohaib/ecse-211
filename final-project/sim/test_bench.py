@@ -3,6 +3,7 @@
 Runs every bench_tests.py test against the simulator with scripted answers, to catch crashes
 before they happen on the robot.   python3 sim/test_bench.py [-v] [test numbers...]
 """
+from __future__ import annotations
 import builtins
 import contextlib
 import importlib

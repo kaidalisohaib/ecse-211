@@ -30,6 +30,7 @@ robot's console output.
 
 Keys (replay): space = play/pause, left/right = -/+ 2 s, up/down = faster/slower, Home = restart.
 """
+from __future__ import annotations
 import argparse
 import glob
 import json

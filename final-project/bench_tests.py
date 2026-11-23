@@ -9,6 +9,7 @@ Each test says what to look at and which constant in snowplow_core.py / phase*.p
 Tile positions below are board tiles; the robot is told where it is, so put it there by hand
 (axle over the tile centre, facing the given direction). Watch it live at http://<robot-ip>:8080.
 """
+from __future__ import annotations
 import math
 import statistics
 import sys

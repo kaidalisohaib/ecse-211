@@ -2,6 +2,7 @@
 Test boards. Tiles are named by their lower-left intersection (same as the robot code).
 `street` is the ground-truth street (without the exit tile) used to score the mapping.
 """
+from __future__ import annotations
 
 MAPS = {
     # Figure 1 of the project handout.

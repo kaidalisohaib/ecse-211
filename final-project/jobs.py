@@ -17,6 +17,7 @@ You don't need to run this by hand, but you can:
 This module's top level imports nothing from the robot code, so dashboard.py can import JOB_LABELS and
 bench_test_names() without touching the hardware.
 """
+from __future__ import annotations
 import argparse
 import ast
 import builtins

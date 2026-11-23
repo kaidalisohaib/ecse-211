@@ -10,6 +10,7 @@ Runs the real phase1_mapping.py / phase2_snow_removal.py against a simulated boa
 Simulated time runs faster than real time unless --realtime is given. Nothing talks to real hardware.
 Telemetry: --viz-udp HOST:PORT streams to a visualizer; --viz-log DIR keeps the .jsonl logs.
 """
+from __future__ import annotations
 import argparse
 import builtins
 import contextlib

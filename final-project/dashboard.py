@@ -22,6 +22,7 @@ How it stays safe: only one program may drive the BrickPi.
     this folder) and treated the same way. "Release hardware" covers anything it can't see.
   - Quitting the dashboard stops its own job but never resets the brick.
 """
+from __future__ import annotations
 import argparse
 import ast
 import atexit
@@ -265,6 +266,10 @@ class RealHardware:
         m.set_position_relative(int(deg))
 
     def reset_encoder(self, port):
+        # Float the motor first: after a jog it is still holding a position target, and the BrickPi keeps that
+        # target when the encoder is reset, so the motor would turn by the old reading to "get back" to it.
+        self.motors[port].set_power(0)
+        time.sleep(0.05)
         self.motors[port].reset_encoder()
 
     def clear_limits(self, port):
@@ -379,6 +384,7 @@ class SimHardware:
 
     def reset_encoder(self, port):
         with self.lock:
+            self.w.motor_set_power(port, 0)      # same as the real robot: drop the position target first
             self.w.motor_reset(port)
 
     def clear_limits(self, port):

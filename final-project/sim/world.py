@@ -14,6 +14,7 @@ What it models:
 What it does NOT model: pom-pom physics/catch rate, motor stalls, real sensor quirks.
 Treat its times as optimistic-but-close and its clearances as a sanity check.
 """
+from __future__ import annotations
 import ast
 import math
 import os

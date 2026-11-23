@@ -7,6 +7,7 @@ its explanation is the comment next to it. Saving replaces only the value's text
 they are. Every save keeps a copy of the old file in logs/constants_backup/ and a line in
 logs/constants_changes.log.
 """
+from __future__ import annotations
 import ast
 import io
 import json

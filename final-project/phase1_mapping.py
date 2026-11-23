@@ -15,6 +15,7 @@ ECSE 211 Final Design Project - Phase 1: Autonomous Street Mapping
   5. Saves street_map.json (houses next to the street are inferred), then returns home via
      the drop-off tile so Phase 2 can reuse a path that has been driven.
 """
+from __future__ import annotations
 
 import json
 import time
