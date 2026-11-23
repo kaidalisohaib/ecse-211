@@ -75,7 +75,7 @@ def read_constants(path=os.path.join(HERE, "snowplow_core.py")):
     want = {"LEFT_DRIVE_PORT": "B", "RIGHT_DRIVE_PORT": "C", "TURRET_PORT": "B", "DUMP_PORT": "A",
             "ROLLER_MOTOR_PORT": "D", "LEFT_COLOR_PORT": 4, "RIGHT_COLOR_PORT": 2,
             "ULTRASONIC_PORT": 3, "LINE_THRESHOLD": 30, "DRIVE_POLARITY": -1, "ROLLER_SWEEP_DPS": 900,
-            "ROLLER_SWEEP_POWER": None,
+            "ROLLER_SWEEP_POWER": None, "DUMP_PLUS": None, "DUMP_MINUS": "BACK",
             "TILE_X_MIN": -1, "TILE_X_MAX": 7, "TILE_Y_MIN": -1, "TILE_Y_MAX": 3}
     try:
         tree = ast.parse(open(path).read())
@@ -1056,6 +1056,7 @@ class Hub:
                 "battery": battery, "phase": self.phase, "colour_mode": self.colour_mode,
                 "line_threshold": self.c["LINE_THRESHOLD"], "belt_dps": self.c["ROLLER_SWEEP_DPS"],
                 "belt_power": self.c["ROLLER_SWEEP_POWER"],
+                "dump_plus": self.c["DUMP_PLUS"], "dump_minus": self.c["DUMP_MINUS"],
                 "message": self.message if time.time() - self.message_t < 15 else "",
                 "motors": {p: dict(m, role=roles_m.get(p, "")) for p, m in motors.items()},
                 "motor_roles": roles_m, "sensors": sensors, "steps": self.steps, "points": self.points,
@@ -1388,7 +1389,10 @@ function spark(h,lo,hi,marks){const ok=(h||[]).filter(v=>v!=null);if(!h||h.lengt
  return `<svg class="spark" viewBox="0 0 100 28" preserveAspectRatio="none">${mk}${pts.map(p=>`<polyline fill="none" stroke="#4c8dff" stroke-width="1.5" stroke-linecap="round" vector-effect="non-scaling-stroke" points="${p}"/>`).join('')}</svg>`;}
 function motorButtons(p,role,dis){const d=dis?'disabled':'';const B=(k,v,t,cls)=>`<button ${d} ${cls?`class="${cls}"`:''} data-mc="${k}" data-port="${p}" data-v="${v}">${t}</button>`;
  const jog=B('jog',-30,'&minus;30&deg;')+B('jog',30,'+30&deg;');
- if(role==='Dump')return `<button ${d} class="go" data-job="dump" data-args="+" title="Full dump with motor A turning + (pours where DUMP_PLUS says)">Dump motor +</button><button ${d} class="go" data-job="dump" data-args="-" title="Full dump with motor A turning &minus; (pours where DUMP_MINUS says)">Dump motor &minus;</button>`+B('jog',-15,'&minus;15&deg;')+B('jog',15,'+15&deg;')+B('reset',0,'Reset enc');
+ if(role==='Dump'){const dp=S.dump_plus,dm=S.dump_minus;
+  const db=(sg,w,t)=>w?`<button ${d} class="go" data-job="dump" data-args="${sg}" title="Full dump with the motor turning ${t}: the bin pours ${String(w).toLowerCase()}">Dump (${t}, ${String(w).toLowerCase()})</button>`
+   :`<button disabled title="DUMP_${sg==='+'?'PLUS':'MINUS'} is None: the bin can't tip that way (use the jog buttons to explore)">Dump ${t}: off</button>`;
+  return db('+',dp,'+')+db('-',dm,'&minus;')+B('jog',-15,'&minus;15&deg;')+B('jog',15,'+15&deg;')+B('reset',0,'Reset enc');}
  if(role==='Turret')return `<button ${d} class="go" data-job="scan">Scan L/F/R</button>`+B('jog',-15,'&minus;15&deg;')+B('jog',15,'+15&deg;')+B('reset',0,'Reset enc');
  if(role==='Belt'){const pw=S.belt_power;if(pw)return B('pow',pw,'On')+B('pow',-pw,'Reverse')+B('pow',0,'Off')+jog+B('reset',0,'Reset enc');
   const v=S.belt_dps;return B('dps',v,'On')+B('dps',-v,'Reverse')+B('dps',0,'Off')+jog+B('reset',0,'Reset enc');}
