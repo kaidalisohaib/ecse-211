@@ -1,0 +1,30 @@
+                                           McGill University
+                              Department of Electrical and Computer Engineering
+                                  ECSE 211 Design Principles and Methods
+                                                   Fall 2026
+
+                                               Design Report
+
+As a team, you must submit a design report that explains your project requirements, your design process, and
+testing procedures. This document provides you with information of what to submit and will be updated
+throughout the last weeks of the term to provide you with further information when needed.
+
+
+Requirements Document (8% of total grade)
+During the first week of the project, your focus should be the requirements document. By the end of the first
+week, you should have a complete first draft of this document. You may continue to change this document
+throughout the project until you submit it.
+
+The requirements document is used to describe the problem statement and the project requirements. You must
+write the problem statement of your project based on the client needs. You must also write 60 requirements
+for your project split as follows: 20 functions, 20 objectives, and 10 constraints. The problem statement and the
+requirements should be based on the client needs document.
+
+
+System Design Document (16% of total grade)
+Coming soon!
+
+
+Testing Document (8% of total grade)
+Coming Soon!
+

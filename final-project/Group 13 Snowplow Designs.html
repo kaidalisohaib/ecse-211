@@ -1,0 +1,1105 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Group 13 Snowplow Designs</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: report column with a sticky section rail on wide screens; figures sit inside the column, scroll sideways on phones. */
+:root {
+  --paper: #F2F3EF; --panel: #FFFFFF; --sunk: #E8EAE5;
+  --ink: #1A222B; --ink-2: #56616B; --rule: #D3D8D6;
+  --accent: #C4521A; --accent-soft: #F6E3D6; --steel: #2E6690; --steel-soft: #DCE8F1;
+  --ok: #2D7A4D; --ok-soft: #DDEFE3; --warn: #9A6410; --warn-soft: #F5EBD4; --bad: #B0261E; --bad-soft: #F6DEDC;
+  --tile: #EFD3AC; --street: #E9C99C; --gridline: #2A2522; --house: #8E99A4; --house-edge: #66717C; --roof: #A9B3BC;
+  --on-house: #10161C; --brick: #BFD3DE; --on-brick: #1A222B;
+  --lego: #C9CED2; --lego-edge: #8E969C; --lego-dark: #4B535B; --tyre: #26292D; --sensor: #34393F; --us-eye: #D2372E;
+  --card: #C8A06B; --card-dark: #8A6532; --tube: #D9B98A; --paper-part: #F7F4EC; --caster: #9AA3AA;
+  --pom0: #E2453C; --pom1: #F2C230; --pom2: #3C8FD6; --pom3: #3FA65A; --pom4: #E86FAE; --pom5: #8A5BD1; --pomk: #1C1D20;
+  --f-display: "Barlow Condensed", "Arial Narrow", "Roboto Condensed", sans-serif;
+  --f-body: "Public Sans", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --f-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  --step--1: 0.84rem; --step-0: 1rem; --step-1: 1.2rem; --step-2: 1.55rem; --step-3: 2.1rem; --step-4: 3.1rem;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --paper: #11161B; --panel: #181F26; --sunk: #0D1115;
+  --ink: #E2E7EB; --ink-2: #9AA6B0; --rule: #2A343E;
+  --accent: #F08A4C; --accent-soft: #3A2417; --steel: #7DB3DA; --steel-soft: #182A38;
+  --ok: #63C38B; --ok-soft: #15301F; --warn: #E3AE52; --warn-soft: #33270F; --bad: #F0776C; --bad-soft: #3A1916;
+  --tile: #5B4632; --street: #6A5139; --gridline: #0A0A0A; --house: #55626F; --house-edge: #7C8996; --roof: #697785;
+  --on-house: #EEF2F5; --brick: #35505F; --on-brick: #E2E7EB;
+  --lego: #77818A; --lego-edge: #9AA4AC; --lego-dark: #2C333A; --tyre: #0B0D0F; --sensor: #1F2429; --us-eye: #E2554B;
+  --card: #9C7A4D; --card-dark: #C9A46F; --tube: #A88B5E; --paper-part: #D8D2C4; --caster: #8E979E;
+  --pom0: #EE5F56; --pom1: #F2C94C; --pom2: #5AA6E6; --pom3: #58BD72; --pom4: #EF86BE; --pom5: #A27BE0; --pomk: #050607;
+  color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --paper: #11161B; --panel: #181F26; --sunk: #0D1115;
+  --ink: #E2E7EB; --ink-2: #9AA6B0; --rule: #2A343E;
+  --accent: #F08A4C; --accent-soft: #3A2417; --steel: #7DB3DA; --steel-soft: #182A38;
+  --ok: #63C38B; --ok-soft: #15301F; --warn: #E3AE52; --warn-soft: #33270F; --bad: #F0776C; --bad-soft: #3A1916;
+  --tile: #5B4632; --street: #6A5139; --gridline: #0A0A0A; --house: #55626F; --house-edge: #7C8996; --roof: #697785;
+  --on-house: #EEF2F5; --brick: #35505F; --on-brick: #E2E7EB;
+  --lego: #77818A; --lego-edge: #9AA4AC; --lego-dark: #2C333A; --tyre: #0B0D0F; --sensor: #1F2429; --us-eye: #E2554B;
+  --card: #9C7A4D; --card-dark: #C9A46F; --tube: #A88B5E; --paper-part: #D8D2C4; --caster: #8E979E;
+  --pom0: #EE5F56; --pom1: #F2C94C; --pom2: #5AA6E6; --pom3: #58BD72; --pom4: #EF86BE; --pom5: #A27BE0; --pomk: #050607;
+  color-scheme: dark; }
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+body { background: var(--paper); color: var(--ink); font-family: var(--f-body); font-size: var(--step-0); line-height: 1.6; }
+a { color: var(--steel); text-underline-offset: 2px; }
+a:focus-visible, button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+h1, h2, h3, h4 { font-family: var(--f-display); line-height: 1.08; text-wrap: balance; margin: 0; }
+h2 { font-size: var(--step-3); font-weight: 700; letter-spacing: 0.005em; }
+h3 { font-size: var(--step-2); font-weight: 600; }
+h4 { font-size: var(--step-1); font-weight: 600; letter-spacing: 0.01em; }
+p { margin: 0; max-width: 68ch; }
+code, kbd { font-family: var(--f-mono); font-size: 0.88em; background: var(--sunk); padding: 0.05em 0.35em; border-radius: 4px; }
+.label { font-family: var(--f-display); text-transform: uppercase; letter-spacing: 0.09em; font-size: 0.86rem; font-weight: 600; color: var(--ink-2); }
+
+/* masthead */
+.mast { border-bottom: 1px solid var(--rule); background: var(--panel); }
+.mast-in { max-width: 1180px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 40px 32px; display: grid; gap: 18px; }
+.mast h1 { font-size: clamp(2.3rem, 6vw, var(--step-4)); font-weight: 700; text-transform: uppercase; letter-spacing: 0.01em; }
+.mast h1 span { color: var(--accent); }
+.mast .lede { font-size: var(--step-1); line-height: 1.5; max-width: 62ch; color: var(--ink); }
+.plates { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; margin-top: 6px; }
+.plate { border: 2px solid var(--ink); border-radius: 6px; padding: 10px 12px 9px; display: grid; gap: 2px; background: var(--paper); }
+.plate b { font-family: var(--f-display); font-size: 1.7rem; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
+.plate span { font-size: var(--step--1); color: var(--ink-2); line-height: 1.35; }
+
+/* frame */
+.wrap { max-width: 1180px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 36px 80px; display: grid; grid-template-columns: 196px minmax(0, 1fr); gap: 48px; }
+.rail { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 24px); align-self: start; display: grid; gap: 4px; font-size: 0.92rem; }
+.rail a { color: var(--ink-2); text-decoration: none; padding: 4px 0 4px 10px; border-left: 2px solid var(--rule); display: flex; gap: 8px; }
+.rail a span { font-family: var(--f-mono); font-size: 0.78rem; color: var(--ink-2); padding-top: 2px; }
+.rail a:hover { color: var(--ink); border-left-color: var(--accent); }
+main { min-width: 0; display: grid; gap: 72px; }
+section { display: grid; gap: 22px; scroll-margin-top: 24px; min-width: 0; }
+.sec-head { display: grid; gap: 8px; }
+.sec-head .label { color: var(--accent); }
+@media (max-width: 920px) {
+  .wrap { grid-template-columns: minmax(0, 1fr); gap: 28px; }
+  .rail { position: static; display: flex; flex-wrap: wrap; gap: 6px; }
+  .rail a { border: 1px solid var(--rule); border-radius: 999px; padding: 3px 10px; }
+}
+
+/* figures */
+figure { margin: 0; display: grid; gap: 8px; min-width: 0; align-content: start; }
+.svgbox { overflow-x: auto; background: var(--panel); border: 1px solid var(--rule); border-radius: 8px; padding: 10px; }
+.fig-svg { width: 100%; height: auto; display: block; }
+.fig-svg.sq { max-width: 460px; margin: 0 auto; }
+figcaption { font-size: var(--step--1); color: var(--ink-2); max-width: 70ch; }
+.fig-svg * { vector-effect: non-scaling-stroke; }
+.floor { fill: var(--tile); } .street { fill: var(--street); }
+.gl { stroke: var(--gridline); stroke-width: 1.2; }
+.house { fill: var(--house); stroke: var(--house-edge); stroke-width: 1; } .roof { fill: var(--roof); }
+.pom { stroke: none; } .pom-hi { fill: #FFFFFF; opacity: 0.35; }
+.p0 { fill: var(--pom0); } .p1 { fill: var(--pom1); } .p2 { fill: var(--pom2); } .p3 { fill: var(--pom3); } .p4 { fill: var(--pom4); } .p5 { fill: var(--pom5); }
+.route { fill: none; stroke: var(--accent); stroke-width: 2; stroke-dasharray: 7 5; }
+.route-head, .mkf { fill: var(--accent); }
+.entry { stroke: var(--accent); stroke-width: 5; } .exit { stroke: var(--steel); stroke-width: 4; }
+.spt { fill: var(--accent); } .start { fill: var(--steel); }
+.drop { fill: none; stroke: var(--accent); stroke-width: 2; } .dropc { fill: var(--accent); }
+.beam { stroke: var(--steel); stroke-width: 2; } .beam.open { stroke-dasharray: 6 4; }
+.rot { fill: none; stroke: var(--accent); stroke-width: 2; }
+.dim { stroke: var(--ink-2); stroke-width: 1; }
+.floorline { stroke: var(--ink); stroke-width: 2; }
+.lego { fill: var(--lego); stroke: var(--lego-edge); stroke-width: 1; } .lego2 { fill: var(--lego-dark); }
+.lego-line { stroke: var(--lego-dark); stroke-width: 3; }
+.tyre { fill: var(--tyre); } .hub { fill: var(--lego); } .caster { fill: var(--caster); stroke: var(--lego-dark); stroke-width: 1; }
+.brick { fill: var(--brick); stroke: var(--lego-edge); stroke-width: 1; }
+.csens, .us { fill: var(--sensor); stroke: var(--lego-edge); stroke-width: 1; } .us-eye { fill: var(--us-eye); }
+.touch { fill: var(--lego); stroke: var(--accent); stroke-width: 1.5; }
+.card { fill: var(--card); stroke: var(--card-dark); stroke-width: 1.2; }
+.card.hop, .card.bucket { fill: none; stroke: var(--card-dark); stroke-width: 3; stroke-linejoin: round; }
+.card.hop-top { fill: var(--card); opacity: 0.55; }
+.card.intake { fill: var(--card); opacity: 0.9; }
+.ramp { stroke: var(--card-dark); stroke-width: 3.5; stroke-linecap: round; }
+.hood { fill: none; stroke: var(--card-dark); stroke-width: 2.5; stroke-linejoin: round; }
+.paperroll { fill: var(--tube); stroke: var(--card-dark); stroke-width: 1; }
+.flap { stroke: var(--paper-part); stroke-width: 3.5; stroke-linecap: round; }
+.belt { stroke: var(--ink); stroke-width: 2; } .cleat { stroke: var(--card-dark); stroke-width: 2.5; }
+.arm { stroke: var(--lego-dark); stroke-width: 5; stroke-linecap: round; }
+.ghost { fill: none; stroke: var(--ink-2); stroke-width: 1.4; stroke-dasharray: 5 4; }
+.ghost.faint { opacity: 0.5; }
+.ghost-line { stroke: var(--ink-2); stroke-width: 1.4; stroke-dasharray: 5 4; }
+.wallface { stroke: var(--house-edge); stroke-width: 2; }
+.axle { stroke: var(--ink-2); stroke-width: 1; stroke-dasharray: 3 3; }
+.spin-zone { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.2; stroke-dasharray: 4 3; }
+.pk { fill: var(--pomk); stroke: var(--ink-2); stroke-width: 0.8; }
+.tagc { fill: var(--accent); } .tagt { fill: var(--panel); font-weight: 700; }
+.guide { fill: none; stroke: var(--card-dark); stroke-width: 3.5; stroke-linecap: round; }
+.guide-f { fill: var(--card-dark); }
+.skirt { stroke: var(--steel); stroke-width: 3; stroke-linecap: round; }
+.tipzone { fill: none; stroke: var(--ink-2); stroke-width: 1; stroke-dasharray: 3 3; }
+.flap2 { fill: none; stroke: var(--steel); stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round; }
+.flapv1 { fill: var(--pom2); opacity: 0.9; }
+.flapv2 { fill: var(--steel); opacity: 0.55; }
+.slit { stroke: var(--panel); stroke-width: 1.5; }
+.slitd { stroke: var(--ink); stroke-width: 1.2; }
+.hit { fill: var(--accent); }
+.miss { stroke: var(--bad); stroke-width: 2; }
+.flapstrip { fill: var(--steel-soft); stroke: var(--steel); stroke-width: 1.2; }
+.fold { stroke: var(--ink-2); stroke-width: 1; stroke-dasharray: 4 3; }
+.t { fill: var(--ink); font-family: var(--f-body); } .tb { font-weight: 600; } .tm, .dimt { fill: var(--ink-2); }
+.on-house { fill: var(--on-house); font-weight: 600; } .on-brick { fill: var(--on-brick); font-weight: 600; }
+
+/* prose bits */
+.cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 18px 28px; }
+.cols > * { min-width: 0; }
+ul.plain { margin: 0; padding-left: 1.1em; display: grid; gap: 6px; }
+ul.plain li { max-width: 68ch; }
+.assume { display: flex; flex-wrap: wrap; gap: 8px; }
+.assume span { border: 1px dashed var(--ink-2); border-radius: 999px; padding: 3px 11px; font-size: var(--step--1); }
+.note { background: var(--sunk); border-radius: 8px; padding: 14px 16px; display: grid; gap: 6px; }
+.note.warn { background: var(--warn-soft); }
+.note .label { color: var(--ink); }
+
+/* tables */
+.tbl-wrap { overflow-x: auto; border: 1px solid var(--rule); border-radius: 8px; background: var(--panel); }
+table { border-collapse: collapse; width: 100%; font-size: 0.93rem; }
+th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+th { font-family: var(--f-display); text-transform: uppercase; letter-spacing: 0.07em; font-size: 0.82rem; font-weight: 600; color: var(--ink-2); background: var(--sunk); white-space: nowrap; }
+tr:last-child td { border-bottom: 0; }
+td:first-child { min-width: 150px; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.dots { font-family: var(--f-mono); letter-spacing: 1px; color: var(--accent); white-space: nowrap; }
+.dots i { color: var(--rule); font-style: normal; }
+
+/* ports */
+.ports { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; font-size: 0.8rem; }
+.ports div { border: 1px solid var(--rule); border-radius: 5px; padding: 4px 6px; line-height: 1.25; background: var(--panel); min-width: 0; }
+.ports div b { font-family: var(--f-mono); font-size: 0.78rem; display: block; color: var(--ink-2); font-weight: 500; }
+.ports div.free { border-style: dashed; color: var(--ink-2); background: transparent; }
+.ports div.new { border-color: var(--accent); }
+
+/* design cards */
+.design { background: var(--panel); border: 1px solid var(--rule); border-radius: 10px; padding: 22px; display: grid; gap: 18px; min-width: 0; }
+.design.pick { border: 2px solid var(--accent); }
+.d-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px 14px; }
+.d-code { font-family: var(--f-mono); font-size: 0.85rem; color: var(--ink-2); }
+.verdict { font-family: var(--f-display); text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.8rem; font-weight: 700; border-radius: 4px; padding: 2px 8px; }
+.v-pick { background: var(--accent); color: var(--panel); }
+.v-back { background: var(--steel-soft); color: var(--steel); }
+.v-alt { background: var(--sunk); color: var(--ink-2); }
+.d-body { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: 22px; align-items: start; }
+.d-body.wide { grid-template-columns: minmax(0, 1fr); }
+@media (max-width: 760px) { .d-body { grid-template-columns: minmax(0, 1fr); } }
+.d-text { display: grid; gap: 12px; min-width: 0; align-content: start; }
+.pc { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+@media (max-width: 520px) { .pc { grid-template-columns: 1fr; } }
+.pc ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 5px; font-size: 0.93rem; }
+.pc li { padding-left: 1.2em; position: relative; }
+.pc .pro li::before { content: "+"; position: absolute; left: 0; color: var(--ok); font-weight: 700; }
+.pc .con li::before { content: "−"; position: absolute; left: 0; color: var(--bad); font-weight: 700; }
+.pc h4 { font-size: 0.95rem; margin-bottom: 4px; }
+
+/* checker */
+.checker { background: var(--panel); border: 1px solid var(--rule); border-radius: 10px; display: grid; grid-template-columns: minmax(0, 300px) minmax(0, 1fr); min-width: 0; }
+@media (max-width: 860px) { .checker { grid-template-columns: minmax(0, 1fr); } }
+.ck-controls { padding: 18px; border-right: 1px solid var(--rule); display: grid; gap: 12px; align-content: start; }
+@media (max-width: 860px) { .ck-controls { border-right: 0; border-bottom: 1px solid var(--rule); } }
+.presets { display: flex; flex-wrap: wrap; gap: 6px; }
+.presets button { font: inherit; font-size: 0.82rem; border: 1px solid var(--rule); background: var(--paper); color: var(--ink); border-radius: 999px; padding: 4px 10px; cursor: pointer; }
+.presets button[aria-pressed="true"] { background: var(--ink); color: var(--panel); border-color: var(--ink); }
+.slider { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; font-size: 0.88rem; }
+.slider label { color: var(--ink-2); }
+.slider output { font-family: var(--f-mono); font-size: 0.82rem; font-variant-numeric: tabular-nums; }
+.slider input { grid-column: 1 / -1; width: 100%; accent-color: var(--accent); }
+.ck-view { padding: 18px; display: grid; gap: 14px; min-width: 0; }
+.ck-svgbox { overflow-x: auto; }
+#turnsvg { width: 100%; max-width: 520px; height: auto; display: block; margin: 0 auto; min-width: 300px; }
+#turnsvg .rb { fill: none; stroke: var(--steel); stroke-width: 1; opacity: 0.35; vector-effect: non-scaling-stroke; }
+#turnsvg .rb.key { opacity: 1; stroke-width: 2; }
+#turnsvg .rb.key.end { stroke: var(--accent); }
+#turnsvg .house { fill: var(--house); stroke: var(--house-edge); stroke-width: 1; vector-effect: non-scaling-stroke; }
+#turnsvg .floor { fill: var(--street); }
+#turnsvg .gl { stroke: var(--gridline); stroke-width: 1.2; vector-effect: non-scaling-stroke; }
+#turnsvg .pinch { fill: none; stroke: var(--bad); stroke-width: 2; vector-effect: non-scaling-stroke; }
+#turnsvg .ctr { fill: var(--accent); }
+#turnsvg text { fill: var(--ink-2); font-family: var(--f-body); }
+.results { display: grid; gap: 0; border: 1px solid var(--rule); border-radius: 8px; overflow: hidden; }
+.res { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 10px; align-items: center; padding: 8px 12px; border-bottom: 1px solid var(--rule); font-size: 0.9rem; }
+.res:last-child { border-bottom: 0; }
+.res .v { font-family: var(--f-mono); font-variant-numeric: tabular-nums; font-size: 0.85rem; text-align: right; }
+.res .sub { display: block; font-size: 0.8rem; color: var(--ink-2); }
+.pill { font-family: var(--f-display); text-transform: uppercase; letter-spacing: 0.08em; font-weight: 700; font-size: 0.75rem; padding: 2px 8px; border-radius: 4px; white-space: nowrap; }
+.pill.ok { background: var(--ok-soft); color: var(--ok); } .pill.tight { background: var(--warn-soft); color: var(--warn); } .pill.bad { background: var(--bad-soft); color: var(--bad); } .pill.info { background: var(--sunk); color: var(--ink-2); }
+
+/* code */
+pre { margin: 0; background: var(--sunk); border-radius: 8px; padding: 14px 16px; overflow-x: auto; font-family: var(--f-mono); font-size: 0.82rem; line-height: 1.55; }
+pre code { background: none; padding: 0; font-size: inherit; }
+pre.mermaid { background: var(--panel); border: 1px solid var(--rule); font-family: var(--f-body); }
+details { border: 1px solid var(--rule); border-radius: 8px; background: var(--panel); }
+details > summary { cursor: pointer; padding: 10px 14px; font-weight: 600; }
+details[open] > summary { border-bottom: 1px solid var(--rule); }
+details > div { padding: 14px; display: grid; gap: 12px; min-width: 0; }
+
+ol.steps { margin: 0; padding: 0; list-style: none; counter-reset: s; display: grid; gap: 12px; }
+ol.steps li { counter-increment: s; display: grid; grid-template-columns: 2.2rem minmax(0, 1fr); gap: 10px; }
+ol.steps li::before { content: counter(s); font-family: var(--f-display); font-weight: 700; font-size: 1.5rem; line-height: 1.1; color: var(--accent); }
+ol.qs { margin: 0; padding-left: 1.3em; display: grid; gap: 8px; }
+.src { font-size: 0.9rem; }
+.legend { font-size: var(--step--1); color: var(--ink-2); margin-top: -10px; }
+.src li { overflow-wrap: anywhere; }
+</style>
+
+
+
+<header class="mast">
+  <div class="mast-in">
+    <div class="label">ECSE 211 · DPM final project · Group 13 · design exploration · Oct 2026</div>
+    <h1>Snowplow robot <span>design options</span></h1>
+    <p class="lede">Hardware and software options for the street project: map a one-tile street lined with 30 cm houses (phase 1), then lift 50 pom-poms out of it and drop them at a given spot without touching a house (phase 2). Everything here is built from your lab 2–4 handouts, your lab 3 code and <code>utils</code> library, the kit checklists and the robot photo.</p>
+    <div class="plates">
+      <div class="plate"><b>30 cm</b><span>street width, about 2.5 cm of air on each side of a 25 cm intake</span></div>
+      <div class="plate"><b>4 + 4</b><span>motor and sensor ports on the one BrickPi3, for 5 motors and 6 sensors in the kit</span></div>
+      <div class="plate"><b>≈ 0.13 L</b><span>loose volume of 50 pom-poms at ~1.4 cm like your test ones (up to ~1 L if sizes reach 4 cm)</span></div>
+      <div class="plate"><b>≤ 11 cm</b><span>how far the intake may reach ahead of the axle and still turn at a corner</span></div>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+  <nav class="rail" aria-label="Sections">
+    <a href="#short"><span>00</span>Short version</a>
+    <a href="#brief"><span>01</span>The brief</a>
+    <a href="#kit"><span>02</span>What you have</a>
+    <a href="#geometry"><span>03</span>Street geometry</a>
+    <a href="#phase1"><span>04</span>Phase 1 hardware</a>
+    <a href="#phase2"><span>05</span>Phase 2 hardware</a>
+    <a href="#roller-v2"><span>05b</span>Roller v2</a>
+    <a href="#software"><span>06</span>Software</a>
+    <a href="#plan"><span>07</span>Build order</a>
+    <a href="#questions"><span>08</span>Ask the prof</a>
+    <a href="#sources"><span>09</span>Sources</a>
+  </nav>
+
+  <main>
+    <section id="short">
+      <div class="sec-head"><div class="label">00 · Short version</div><h2>What I would build</h2></div>
+      <div class="cols">
+        <div class="note"><div class="label">Phase 1</div><p><b>Sonar turret on your current chassis.</b> Stop at each tile centre, look left, ahead and right, and record walls. Start coding this week with the <b>spin-scan</b> version, which needs no new parts.</p></div>
+        <div class="note"><div class="label">Phase 2</div><p><b>Roller sweeper with a tilting hopper</b>, sized with the checker below: intake ≤ 25 cm wide, front ≤ 11 cm ahead of the axle, 4 cm chamfers. Keep the <b>bucket loader</b> as the simpler backup.</p></div>
+        <div class="note"><div class="label">Software</div><p><b>Tile-by-tile explorer, one control loop, map saved as JSON.</b> Phase 2 reloads the map and replays it. Your lab 3 line correction carries over almost unchanged, because every street tile boundary is a black line.</p></div>
+      </div>
+    </section>
+
+    <section id="brief">
+      <div class="sec-head"><div class="label">01 · The brief</div><h2>The task as I understand it</h2></div>
+      <figure>
+        <div class="svgbox"><svg class="fig-svg" viewBox="-12 -8 290 170" style="min-width:620px" role="img" aria-label="Illustrative board: 9 by 5 tiles, a street lined with houses, S1 and S2 at the entry, 50 pom-poms and a drop point" xmlns="http://www.w3.org/2000/svg"><rect x="0" y="0" width="270" height="150" rx="0" class="floor" /><rect x="30" y="90" width="30" height="30" rx="0" class="street" /><rect x="30" y="60" width="30" height="30" rx="0" class="street" /><rect x="30" y="30" width="30" height="30" rx="0" class="street" /><rect x="60" y="30" width="30" height="30" rx="0" class="street" /><rect x="90" y="30" width="30" height="30" rx="0" class="street" /><rect x="120" y="30" width="30" height="30" rx="0" class="street" /><rect x="150" y="30" width="30" height="30" rx="0" class="street" /><rect x="150" y="60" width="30" height="30" rx="0" class="street" /><rect x="150" y="90" width="30" height="30" rx="0" class="street" /><line x1="0" y1="0" x2="0" y2="150" class="gl" /><line x1="30" y1="0" x2="30" y2="150" class="gl" /><line x1="60" y1="0" x2="60" y2="150" class="gl" /><line x1="90" y1="0" x2="90" y2="150" class="gl" /><line x1="120" y1="0" x2="120" y2="150" class="gl" /><line x1="150" y1="0" x2="150" y2="150" class="gl" /><line x1="180" y1="0" x2="180" y2="150" class="gl" /><line x1="210" y1="0" x2="210" y2="150" class="gl" /><line x1="240" y1="0" x2="240" y2="150" class="gl" /><line x1="270" y1="0" x2="270" y2="150" class="gl" /><line x1="0" y1="150" x2="270" y2="150" class="gl" /><line x1="0" y1="120" x2="270" y2="120" class="gl" /><line x1="0" y1="90" x2="270" y2="90" class="gl" /><line x1="0" y1="60" x2="270" y2="60" class="gl" /><line x1="0" y1="30" x2="270" y2="30" class="gl" /><line x1="0" y1="0" x2="270" y2="0" class="gl" /><rect x="1.2" y="91.2" width="27.6" height="27.6" rx="1.2" class="house" /><rect x="5.2" y="95.2" width="19.6" height="19.6" rx="0.8" class="roof" /><rect x="1.2" y="61.2" width="27.6" height="27.6" rx="1.2" class="house" /><rect x="5.2" y="65.2" width="19.6" height="19.6" rx="0.8" class="roof" /><rect x="1.2" y="31.2" width="27.6" height="27.6" rx="1.2" class="house" /><rect x="5.2" y="35.2" width="19.6" height="19.6" rx="0.8" class="roof" /><rect x="31.2" y="1.2" width="27.6" height="27.6" rx="1.2" class="house" /><rect x="35.2" y="5.2" width="19.6" height="19.6" rx="0.8" class="roof" /><rect x="61.2" y="91.2" width="27.6" height="27.6" rx="1.2" class="house" /><rect x="65.2" y="95.2" width="19.6" height="19.6" rx="0.8" class="roof" /><rect x="61.2" y="61.2" width="27.6" height="27.6" rx="1.2" class="house" /><rect x="65.2" y="65.2" width="19.6" height="19.6" rx="0.8" class="roof" /><rect x="61.2" y="1.2" width="27.6" height="27.6" rx="1.2" class="house" /><rect x="65.2" y="5.2" width="19.6" height="19.6" rx="0.8" class="roof" /><rect x="91.2" y="61.2" width="27.6" height="27.6" rx="1.2" class="house" /><rect x="95.2" y="65.2" width="19.6" height="19.6" rx="0.8" class="roof" /><rect x="91.2" y="1.2" width="27.6" height="27.6" rx="1.2" class="house" /><rect x="95.2" y="5.2" width="19.6" height="19.6" rx="0.8" class="roof" /><rect x="121.2" y="91.2" width="27.6" height="27.6" rx="1.2" class="house" /><rect x="125.2" y="95.2" width="19.6" height="19.6" rx="0.8" class="roof" /><rect x="121.2" y="61.2" width="27.6" height="27.6" rx="1.2" class="house" /><rect x="125.2" y="65.2" width="19.6" height="19.6" rx="0.8" class="roof" /><rect x="121.2" y="1.2" width="27.6" height="27.6" rx="1.2" class="house" /><rect x="125.2" y="5.2" width="19.6" height="19.6" rx="0.8" class="roof" /><rect x="151.2" y="1.2" width="27.6" height="27.6" rx="1.2" class="house" /><rect x="155.2" y="5.2" width="19.6" height="19.6" rx="0.8" class="roof" /><rect x="181.2" y="91.2" width="27.6" height="27.6" rx="1.2" class="house" /><rect x="185.2" y="95.2" width="19.6" height="19.6" rx="0.8" class="roof" /><rect x="181.2" y="61.2" width="27.6" height="27.6" rx="1.2" class="house" /><rect x="185.2" y="65.2" width="19.6" height="19.6" rx="0.8" class="roof" /><rect x="181.2" y="31.2" width="27.6" height="27.6" rx="1.2" class="house" /><rect x="185.2" y="35.2" width="19.6" height="19.6" rx="0.8" class="roof" /><circle cx="39.5" cy="115.77" r="1.25" class="pom p1" /><circle cx="39.12" cy="115.4" r="0.44" class="pom-hi" /><circle cx="49.47" cy="84.93" r="0.95" class="pom p5" /><circle cx="49.19" cy="84.65" r="0.33" class="pom-hi" /><circle cx="35.05" cy="45.84" r="0.95" class="pom p1" /><circle cx="34.77" cy="45.56" r="0.33" class="pom-hi" /><circle cx="62.64" cy="35.17" r="1.25" class="pom p5" /><circle cx="62.26" cy="34.8" r="0.44" class="pom-hi" /><circle cx="118.56" cy="54.2" r="0.65" class="pom p0" /><circle cx="118.36" cy="54" r="0.23" class="pom-hi" /><circle cx="143.58" cy="51.44" r="1.25" class="pom p1" /><circle cx="143.21" cy="51.06" r="0.44" class="pom-hi" /><circle cx="161.21" cy="38" r="1.25" class="pom p4" /><circle cx="160.83" cy="37.63" r="0.44" class="pom-hi" /><circle cx="169.27" cy="84.72" r="1.9" class="pom p5" /><circle cx="168.7" cy="84.15" r="0.66" class="pom-hi" /><circle cx="169.08" cy="100.95" r="1.25" class="pom p4" /><circle cx="168.71" cy="100.57" r="0.44" class="pom-hi" /><circle cx="50.02" cy="106.43" r="1.25" class="pom p5" /><circle cx="49.65" cy="106.05" r="0.44" class="pom-hi" /><circle cx="43.4" cy="81.16" r="0.95" class="pom p4" /><circle cx="43.11" cy="80.87" r="0.33" class="pom-hi" /><circle cx="39.44" cy="36.38" r="0.95" class="pom p2" /><circle cx="39.15" cy="36.09" r="0.33" class="pom-hi" /><circle cx="71.61" cy="38.73" r="1.25" class="pom p2" /><circle cx="71.24" cy="38.36" r="0.44" class="pom-hi" /><circle cx="114.73" cy="46.93" r="1.9" class="pom p4" /><circle cx="114.16" cy="46.36" r="0.66" class="pom-hi" /><circle cx="136.76" cy="55.4" r="0.95" class="pom p5" /><circle cx="136.47" cy="55.12" r="0.33" class="pom-hi" /><circle cx="155.3" cy="43.17" r="1.25" class="pom p5" /><circle cx="154.92" cy="42.79" r="0.44" class="pom-hi" /><circle cx="162.24" cy="80.47" r="1.9" class="pom p0" /><circle cx="161.67" cy="79.9" r="0.66" class="pom-hi" /><circle cx="155.36" cy="113.23" r="0.95" class="pom p3" /><circle cx="155.08" cy="112.95" r="0.33" class="pom-hi" /><circle cx="36.05" cy="102.72" r="1.25" class="pom p2" /><circle cx="35.68" cy="102.35" r="0.44" class="pom-hi" /><circle cx="37.19" cy="84.3" r="1.25" class="pom p2" /><circle cx="36.82" cy="83.93" r="0.44" class="pom-hi" /><circle cx="55.8" cy="50.48" r="0.95" class="pom p1" /><circle cx="55.51" cy="50.2" r="0.33" class="pom-hi" /><circle cx="67.79" cy="47.93" r="1.9" class="pom p4" /><circle cx="67.22" cy="47.36" r="0.66" class="pom-hi" /><circle cx="101.13" cy="51.26" r="0.65" class="pom p2" /><circle cx="100.94" cy="51.07" r="0.23" class="pom-hi" /><circle cx="129.49" cy="35.97" r="0.95" class="pom p5" /><circle cx="129.21" cy="35.69" r="0.33" class="pom-hi" /><circle cx="176.02" cy="35.85" r="0.65" class="pom p3" /><circle cx="175.82" cy="35.66" r="0.23" class="pom-hi" /><circle cx="177.96" cy="83.95" r="0.65" class="pom p5" /><circle cx="177.76" cy="83.75" r="0.23" class="pom-hi" /><circle cx="165.73" cy="94.73" r="0.65" class="pom p2" /><circle cx="165.54" cy="94.53" r="0.23" class="pom-hi" /><circle cx="42.47" cy="116.19" r="0.65" class="pom p4" /><circle cx="42.28" cy="115.99" r="0.23" class="pom-hi" /><circle cx="57.06" cy="75.61" r="0.65" class="pom p0" /><circle cx="56.86" cy="75.41" r="0.23" class="pom-hi" /><circle cx="40.04" cy="35.51" r="0.65" class="pom p4" /><circle cx="39.85" cy="35.32" r="0.23" class="pom-hi" /><circle cx="68.08" cy="37.68" r="1.9" class="pom p0" /><circle cx="67.51" cy="37.11" r="0.66" class="pom-hi" /><circle cx="105.03" cy="55.26" r="1.9" class="pom p5" /><circle cx="104.46" cy="54.69" r="0.66" class="pom-hi" /><circle cx="128.5" cy="49.95" r="0.95" class="pom p1" /><circle cx="128.21" cy="49.67" r="0.33" class="pom-hi" /><circle cx="163.02" cy="38.05" r="1.25" class="pom p1" /><circle cx="162.65" cy="37.68" r="0.44" class="pom-hi" /><circle cx="163.1" cy="78.7" r="1.25" class="pom p3" /><circle cx="162.73" cy="78.33" r="0.44" class="pom-hi" /><circle cx="159.97" cy="103.92" r="0.65" class="pom p0" /><circle cx="159.77" cy="103.72" r="0.23" class="pom-hi" /><circle cx="47.74" cy="91.36" r="0.65" class="pom p2" /><circle cx="47.55" cy="91.17" r="0.23" class="pom-hi" /><circle cx="43.64" cy="88.22" r="0.95" class="pom p3" /><circle cx="43.36" cy="87.94" r="0.33" class="pom-hi" /><circle cx="33.46" cy="45.74" r="1.25" class="pom p1" /><circle cx="33.09" cy="45.36" r="0.44" class="pom-hi" /><circle cx="84.78" cy="34.56" r="0.95" class="pom p1" /><circle cx="84.49" cy="34.28" r="0.33" class="pom-hi" /><circle cx="99.83" cy="47.78" r="0.95" class="pom p2" /><circle cx="99.55" cy="47.49" r="0.33" class="pom-hi" /><circle cx="130.81" cy="33.99" r="0.65" class="pom p3" /><circle cx="130.61" cy="33.8" r="0.23" class="pom-hi" /><circle cx="167.13" cy="47.08" r="1.9" class="pom p3" /><circle cx="166.56" cy="46.51" r="0.66" class="pom-hi" /><circle cx="160.9" cy="69.38" r="0.65" class="pom p0" /><circle cx="160.71" cy="69.18" r="0.23" class="pom-hi" /><circle cx="156.23" cy="115.18" r="1.25" class="pom p5" /><circle cx="155.86" cy="114.81" r="0.44" class="pom-hi" /><circle cx="55.82" cy="115.61" r="0.95" class="pom p5" /><circle cx="55.54" cy="115.33" r="0.33" class="pom-hi" /><circle cx="33.96" cy="86.62" r="0.95" class="pom p0" /><circle cx="33.68" cy="86.33" r="0.33" class="pom-hi" /><circle cx="38.79" cy="53.46" r="1.25" class="pom p0" /><circle cx="38.42" cy="53.08" r="0.44" class="pom-hi" /><circle cx="79.48" cy="56.71" r="0.95" class="pom p4" /><circle cx="79.2" cy="56.43" r="0.33" class="pom-hi" /><circle cx="97.38" cy="42.33" r="1.9" class="pom p0" /><circle cx="96.81" cy="41.76" r="0.66" class="pom-hi" /><polyline points="0,150 15,135 45,135 45,45 165,45 165,135 240,135 240,120" class="route" /><polygon points="240,121.2 241.74,124.8 238.26,124.8" class="route-head" /><line x1="30" y1="120" x2="60" y2="120" class="entry" /><circle cx="30" cy="120" r="2.2" class="spt" /><text x="27.4" y="127.4" font-size="4.83" text-anchor="end" class="t tb" >S1</text><circle cx="60" cy="120" r="2.2" class="spt" /><text x="62.6" y="127.4" font-size="4.83" text-anchor="start" class="t tb" >S2</text><line x1="150" y1="120" x2="180" y2="120" class="exit" /><circle cx="240" cy="120" r="5" class="drop" /><circle cx="240" cy="120" r="1.6" class="dropc" /><text x="240" y="113" font-size="4.6" text-anchor="middle" class="t tb" >drop</text><circle cx="0" cy="150" r="2.2" class="start" /><text x="3" y="147" font-size="4.6" text-anchor="start" class="t" >start (0,0)</text><text x="105" y="16.5" font-size="4.6" text-anchor="middle" class="t on-house" >houses: 30 cm cubes</text><text x="45" y="146" font-size="4.6" text-anchor="middle" class="t tm" >entry</text><text x="165" y="146" font-size="4.6" text-anchor="middle" class="t tm" >exit</text><text x="105" y="54.6" font-size="4.6" text-anchor="middle" class="t" >street, 1 tile wide</text><text x="0" y="157" font-size="4.14" text-anchor="middle" class="t tm" >0</text><text x="30" y="157" font-size="4.14" text-anchor="middle" class="t tm" >1</text><text x="60" y="157" font-size="4.14" text-anchor="middle" class="t tm" >2</text><text x="90" y="157" font-size="4.14" text-anchor="middle" class="t tm" >3</text><text x="120" y="157" font-size="4.14" text-anchor="middle" class="t tm" >4</text><text x="150" y="157" font-size="4.14" text-anchor="middle" class="t tm" >5</text><text x="180" y="157" font-size="4.14" text-anchor="middle" class="t tm" >6</text><text x="210" y="157" font-size="4.14" text-anchor="middle" class="t tm" >7</text><text x="240" y="157" font-size="4.14" text-anchor="middle" class="t tm" >8</text><text x="270" y="157" font-size="4.14" text-anchor="middle" class="t tm" >9</text><text x="-3.5" y="151.5" font-size="4.14" text-anchor="end" class="t tm" >0</text><text x="-3.5" y="121.5" font-size="4.14" text-anchor="end" class="t tm" >1</text><text x="-3.5" y="91.5" font-size="4.14" text-anchor="end" class="t tm" >2</text><text x="-3.5" y="61.5" font-size="4.14" text-anchor="end" class="t tm" >3</text><text x="-3.5" y="31.5" font-size="4.14" text-anchor="end" class="t tm" >4</text><text x="-3.5" y="1.5" font-size="4.14" text-anchor="end" class="t tm" >5</text></svg></div>
+        <figcaption>Illustrative layout on one 9 × 5 table, not the real course. The street starts at the edge between the given intersections S1 and S2. Pom-poms are scattered on the street floor, and the drop point is given separately. Coordinates follow your labs: grid intersections, origin at the start corner.</figcaption>
+      </figure>
+      <div class="cols">
+        <ul class="plain">
+          <li><b>Board:</b> 5 × 9 tiles, possibly two tables joined (10 × 9 or 5 × 18). The handouts use 30.48 cm tiles, so keep <code>TILE_SIZE</code> in one config value.</li>
+          <li><b>Street:</b> one tile wide, lined on both sides by 30 × 30 × 30 cm cubes. Inside the street, the floor still has the black grid lines, so every tile boundary you cross is a correction opportunity.</li>
+          <li><b>Phase 1:</b> find the street from S1 and S2, drive it and map it. Touching houses is allowed.</li>
+        </ul>
+        <ul class="plain">
+          <li><b>Phase 2:</b> collect 50 pom-poms and release them at the drop location. No touching houses. Pom-poms must be carried, not dragged along the floor.</li>
+          <li><b>Hardware:</b> phase 1 and phase 2 may use different hardware, so the intake does not need to exist in phase 1.</li>
+          <li><b>Materials:</b> the kit, plus paper, cardboard and tape.</li>
+        </ul>
+      </div>
+      <div class="assume" aria-label="Assumptions to confirm">
+        <span>Assumed: the street has no branches</span><span>Assumed: the map may be saved between phases</span><span>Assumed: the street ends open onto the board</span><span>Assumed: pom-poms are 1–4 cm, placed anywhere in the street</span>
+      </div>
+    </section>
+
+    <section id="kit">
+      <div class="sec-head"><div class="label">02 · What you have</div><h2>Ports are the real budget</h2>
+        <p>The kit has more motors and sensors than the BrickPi3 can take at once. Every design below is really a choice about which 4 motors and 4 sensors to plug in.</p></div>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>Item</th><th class="num">Kit</th><th>Notes for this project</th></tr></thead>
+          <tbody>
+            <tr><td>EV3 large motor</td><td class="num">2</td><td>Your drive motors (ports B, C). About 160–170 rpm, ~20 N·cm running torque, ~40 N·cm at start.</td></tr>
+            <tr><td>EV3 medium motor</td><td class="num">1</td><td>About 240–250 rpm, ~8 N·cm. Light and fast: good for a sonar turret or an intake roller.</td></tr>
+            <tr><td>NXT motor</td><td class="num">2</td><td>Similar speed to the large motor, slightly more stall torque (~50 N·cm). Good for a hopper tilt or a lift arm.</td></tr>
+            <tr><td>EV3 colour sensor</td><td class="num">2</td><td>Line correction (ports 2 and 4). Keep both in both phases.</td></tr>
+            <tr><td>EV3 ultrasonic</td><td class="num">1</td><td>About 5–255 cm, integer cm, reads 255 when nothing is in range. Most reliable when square to a flat face, which cube houses are.</td></tr>
+            <tr><td>EV3 gyro</td><td class="num">1</td><td>Absolute angle for turns. It drifts slowly, but line snaps reset heading every tile.</td></tr>
+            <tr><td>Touch sensor</td><td class="num">2</td><td>Bumper in phase 1, or a limit switch for the hopper or arm in phase 2.</td></tr>
+            <tr><td>Panels No. 12–14, beams, axles, gears</td><td class="num">—</td><td>The white panels make good ramp sides. Rubber tread loops (No. 59) and the toothed wheels (No. 2) could drive a belt; check that they mesh before relying on it.</td></tr>
+            <tr><td>Steel ball caster</td><td class="num">1</td><td>Pom-pom fibres snag on it. Keep the floor ahead of it swept, which an intake at the front does.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="cols">
+        <div class="d-text">
+          <h3>Your robot today</h3>
+          <ul class="plain">
+            <li>Wheel radius <b>2.1 cm</b> and track width <b>12.0 cm</b>, calibrated in lab 2. Line sensors sit <b>6.0 cm</b> ahead of the axle.</li>
+            <li>At 150 dps it drives <b>5.5 cm/s</b>, about <b>5.5 s per tile</b>. A 10-tile street is about a minute of driving before turns and scans.</li>
+            <li>From the photo: compact two-wheel base, BrickPi on stacked beam layers, colour sensor low beside the wheel, caster at the back. Loose cables hang outside the footprint; tape them in before phase 1 so they cannot catch on a house.</li>
+            <li>Measure the farthest point from the axle centre. My estimate is ~13 cm, which lets it spin in place in any tile.</li>
+          </ul>
+        </div>
+        <div class="d-text">
+          <h3>What pom-poms are like</h3>
+          <ul class="plain">
+            <li><b>Light.</b> Bulk packs run about 200–250 per pound, so ~2 g each and ~100 g for all 50. Weight never matters.</li>
+            <li><b>Smaller than first assumed.</b> Your test pom-poms look about 1.3–1.5 cm and black, so 50 of them take only ~0.13 L loose. A mixed ½″–1½″ pack would be ~0.9 L. See <a href="#roller-v2">Roller v2</a>.</li>
+            <li><b>Grippy when squeezed, dead when pushed.</b> They don't roll like balls. Rollers and flaps that pinch them work well. Ramps that rely on them rolling don't.</li>
+            <li><b>Dark ones look like lines.</b> A black or navy pom-pom under a colour sensor reads like a grid line. Put the line sensors behind the intake.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section id="geometry">
+      <div class="sec-head"><div class="label">03 · Street geometry</div><h2>The 90° turn decides the intake size</h2>
+        <p>Driving straight, a robot only needs to be narrower than the street. Turning at a corner is the hard part, because a wide intake swings out toward the house on the far side. The checker below sweeps your footprint through a 90° turn and finds the best place to stop before turning. Set it to your measured dimensions.</p></div>
+      <div class="checker" id="checker">
+        <div class="ck-controls">
+          <div class="presets" role="group" aria-label="Presets">
+            <button type="button" data-preset="sweeper" aria-pressed="true">Sweeper A</button>
+            <button type="button" data-preset="lab3" aria-pressed="false">Lab 3 robot (est.)</button>
+            <button type="button" data-preset="square" aria-pressed="false">Square 26 cm scoop</button>
+            <button type="button" data-preset="bucket" aria-pressed="false">Bucket down</button>
+          </div>
+          <div class="slider"><label for="ck-iw">Intake width</label><output id="o-iw" for="ck-iw"></output><input type="range" id="ck-iw" min="10" max="28" step="0.5"></div>
+          <div class="slider"><label for="ck-lip">Front reach ahead of axle</label><output id="o-lip" for="ck-lip"></output><input type="range" id="ck-lip" min="4" max="17" step="0.5"></div>
+          <div class="slider"><label for="ck-ch">Corner chamfer</label><output id="o-ch" for="ck-ch"></output><input type="range" id="ck-ch" min="0" max="7" step="0.5"></div>
+          <div class="slider"><label for="ck-depth">Intake depth (front to shoulder)</label><output id="o-depth" for="ck-depth"></output><input type="range" id="ck-depth" min="2" max="12" step="0.5"></div>
+          <div class="slider"><label for="ck-bw">Body width at the wheels</label><output id="o-bw" for="ck-bw"></output><input type="range" id="ck-bw" min="12" max="22" step="0.5"></div>
+          <div class="slider"><label for="ck-rear">Rear reach behind axle</label><output id="o-rear" for="ck-rear"></output><input type="range" id="ck-rear" min="5" max="15" step="0.5"></div>
+          <div class="slider"><label for="ck-W">Street width</label><output id="o-W" for="ck-W"></output><input type="range" id="ck-W" min="28" max="32" step="0.5"></div>
+          <div class="slider"><label for="ck-need">Clearance you want</label><output id="o-need" for="ck-need"></output><input type="range" id="ck-need" min="0.5" max="3" step="0.25"></div>
+        </div>
+        <div class="ck-view">
+          <div class="ck-svgbox"><svg id="turnsvg" role="img" aria-label="Robot footprint sweeping through a right turn at a street corner"></svg></div>
+          <div class="results" id="results" aria-live="polite"></div>
+        </div>
+      </div>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>Footprint</th><th class="num">Turn radius</th><th class="num">Straight</th><th class="num">Corner, best spot</th><th class="num">Spin in a straight tile</th></tr></thead>
+          <tbody>
+            <tr><td>Lab 3 robot, estimated 16 × 19 cm</td><td class="num">12.8 cm</td><td class="num">7.0 cm</td><td class="num">4.6 cm</td><td class="num">2.2 cm</td></tr>
+            <tr><td>Sweeper A: 25 cm intake, front 11 cm, 4 cm chamfer</td><td class="num">14.3 cm</td><td class="num">2.5 cm</td><td class="num">1.6 cm</td><td class="num">0.7 cm</td></tr>
+            <tr><td>Square 26 cm scoop reaching 13 cm</td><td class="num">18.4 cm</td><td class="num">2.0 cm</td><td class="num">hits (−0.7)</td><td class="num">hits</td></tr>
+            <tr><td>Bucket loader, bucket down (15 cm reach)</td><td class="num">18.6 cm</td><td class="num">3.0 cm</td><td class="num">hits (−0.3)</td><td class="num">hits</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="cols">
+        <div class="note"><div class="label">Rule of thumb</div><p>Turn radius (axle centre to farthest point) under ~14.5 cm can turn at any corner. Over ~16 cm you need tricks: stop early, raise the tool, or do a three-point turn. Chamfering the intake's front corners is the cheapest way to shrink the radius without losing width.</p></div>
+        <div class="note"><div class="label">Edge coverage</div><p>A single pass down the centre misses pom-poms hugging the houses. Assuming even placement and 2 cm pom-poms, a 25 cm intake misses about <b>5 of 50</b>, 24 cm misses about 7, and 22 cm misses about 11. A second pass in offset lanes, or edge spinners (P2-D), closes the gap.</p></div>
+      </div>
+    </section>
+
+    <section id="phase1">
+      <div class="sec-head"><div class="label">04 · Phase 1 hardware</div><h2>Exploring the street</h2>
+        <p>Phase 1 needs one answer per tile: is there a house to the left, ahead and to the right? Pose comes from the odometry and line correction you already have. In a straight tile the side houses are 15 cm from the centreline, so a sonar at the tile centre reads about 10–12 cm for a wall and 45 cm or more (often 255) for an opening. Use a threshold around 28 cm.</p></div>
+
+      <article class="design pick" id="p1a">
+        <div class="d-head"><span class="d-code">P1-A</span><h3>Sonar turret</h3><span class="verdict v-pick">Recommended</span></div>
+        <div class="d-body">
+          <figure><div class="svgbox"><svg class="fig-svg sq" viewBox="-46 -46 92 92" style="min-width:420px" role="img" aria-label="Sonar turret scanning left, front and right from the tile centre" xmlns="http://www.w3.org/2000/svg"><rect x="-45" y="-45" width="90" height="90" rx="0" class="floor" /><line x1="-75" y1="-45" x2="-75" y2="45" class="gl" /><line x1="-45" y1="-75" x2="45" y2="-75" class="gl" /><line x1="-45" y1="-45" x2="-45" y2="45" class="gl" /><line x1="-45" y1="-45" x2="45" y2="-45" class="gl" /><line x1="-15" y1="-45" x2="-15" y2="45" class="gl" /><line x1="-45" y1="-15" x2="45" y2="-15" class="gl" /><line x1="15" y1="-45" x2="15" y2="45" class="gl" /><line x1="-45" y1="15" x2="45" y2="15" class="gl" /><rect x="-44.4" y="15.6" width="28.8" height="28.8" rx="1" class="house" /><rect x="-40.4" y="19.6" width="20.8" height="20.8" rx="0.8" class="roof" /><rect x="-44.4" y="-14.4" width="28.8" height="28.8" rx="1" class="house" /><rect x="-40.4" y="-10.4" width="20.8" height="20.8" rx="0.8" class="roof" /><rect x="-44.4" y="-44.4" width="28.8" height="28.8" rx="1" class="house" /><rect x="-40.4" y="-40.4" width="20.8" height="20.8" rx="0.8" class="roof" /><rect x="-14.4" y="-44.4" width="28.8" height="28.8" rx="1" class="house" /><rect x="-10.4" y="-40.4" width="20.8" height="20.8" rx="0.8" class="roof" /><rect x="15.6" y="-44.4" width="28.8" height="28.8" rx="1" class="house" /><rect x="19.6" y="-40.4" width="20.8" height="20.8" rx="0.8" class="roof" /><rect x="15.6" y="15.6" width="28.8" height="28.8" rx="1" class="house" /><rect x="19.6" y="19.6" width="20.8" height="20.8" rx="0.8" class="roof" /><line x1="-3.2" y1="-8.6" x2="-15.6" y2="-8.6" class="beam" /><text x="-9.4" y="-10.6" font-size="3" text-anchor="middle" class="t tb" >L ≈ 12 cm</text><line x1="0" y1="-10" x2="0" y2="-15.6" class="beam" /><text x="1.6" y="-18.5" font-size="3" text-anchor="start" class="t tb" >F ≈ 6 cm</text><line x1="3.2" y1="-8.6" x2="44" y2="-8.6" class="beam open" /><text x="30" y="-10.6" font-size="3" text-anchor="middle" class="t tb" >R = 255 → open</text><path d="M -3.81 -10.4 A 4.4 4.4 0 0 1 3.81 -10.4" class="rot" /><polygon points="4.08,-9.93 2.59,-10.94 3.95,-11.73" class="mkf" /><polygon points="-4.08,-9.93 -3.95,-11.73 -2.59,-10.94" class="mkf" /><g transform="translate(0 0) rotate(0) scale(1.0)"><rect x="-5.6" y="-7" width="11.2" height="17" rx="1.2" class="lego" /><rect x="-4.6" y="-1.5" width="9.2" height="10" rx="0.8" class="brick" /><text x="0" y="3.9" font-size="1.5" text-anchor="middle" class="t on-brick" >BrickPi</text><rect x="-7.7" y="-2.15" width="2.2" height="4.3" rx="0.6" class="tyre" /><rect x="-5.4" y="-6.6" width="2" height="2" rx="0.3" class="csens" /><rect x="5.5" y="-2.15" width="2.2" height="4.3" rx="0.6" class="tyre" /><rect x="3.4" y="-6.6" width="2" height="2" rx="0.3" class="csens" /><circle cx="0" cy="8.7" r="0.9" class="caster" /><circle cx="0" cy="-8.2" r="2.2" class="lego2" /><rect x="-3.2" y="-9.7" width="6.4" height="2.2" rx="0.6" class="us" /><circle cx="-1.6" cy="-9.8" r="0.75" class="us-eye" /><circle cx="1.6" cy="-9.8" r="0.75" class="us-eye" /></g></svg></div><figcaption>At the tile centre the turret looks left, ahead and right. The robot itself never turns except at real corners.</figcaption></figure>
+          <div class="d-text">
+            <p>Mount the ultrasonic sensor on the medium motor at the front centre. At each tile centre, rotate to −90°, 0° and +90°, and take the median of 5 readings at each. Zero the turret against a hard stop at startup so backlash cannot shift its aim.</p>
+            <div class="ports" aria-label="Port map"><div><b>A</b>free</div><div><b>B</b>left drive</div><div><b>C</b>right drive</div><div class="new"><b>D</b>turret (medium)</div><div><b>S1</b>ultrasonic</div><div><b>S2</b>colour R</div><div><b>S3</b>gyro</div><div><b>S4</b>colour L</div></div>
+            <div class="pc"><div class="pro"><h4>Good</h4><ul><li>Heading stays exactly as the last line snap left it</li><li>Three readings in ~1.5 s per tile</li><li>Readings are square to the house faces, so they're clean</li></ul></div>
+              <div class="con"><h4>Watch</h4><ul><li>Needs a stiff mount and a cable with slack for ±90°</li><li>Uses the medium motor, which phase 2 wants back</li><li>Sensor ≥ 5 cm from any face, so mount it on the centreline</li></ul></div></div>
+          </div>
+        </div>
+      </article>
+
+      <article class="design" id="p1b">
+        <div class="d-head"><span class="d-code">P1-B</span><h3>Spin-scan, no new parts</h3><span class="verdict v-back">Start here</span></div>
+        <div class="d-body">
+          <figure><div class="svgbox"><svg class="fig-svg sq" viewBox="-46 -46 92 92" style="min-width:420px" role="img" aria-label="Robot spinning in place at the tile centre to aim a fixed sonar" xmlns="http://www.w3.org/2000/svg"><rect x="-45" y="-45" width="90" height="90" rx="0" class="floor" /><line x1="-75" y1="-45" x2="-75" y2="45" class="gl" /><line x1="-45" y1="-75" x2="45" y2="-75" class="gl" /><line x1="-45" y1="-45" x2="-45" y2="45" class="gl" /><line x1="-45" y1="-45" x2="45" y2="-45" class="gl" /><line x1="-15" y1="-45" x2="-15" y2="45" class="gl" /><line x1="-45" y1="-15" x2="45" y2="-15" class="gl" /><line x1="15" y1="-45" x2="15" y2="45" class="gl" /><line x1="-45" y1="15" x2="45" y2="15" class="gl" /><rect x="-44.4" y="15.6" width="28.8" height="28.8" rx="1" class="house" /><rect x="-40.4" y="19.6" width="20.8" height="20.8" rx="0.8" class="roof" /><rect x="-44.4" y="-14.4" width="28.8" height="28.8" rx="1" class="house" /><rect x="-40.4" y="-10.4" width="20.8" height="20.8" rx="0.8" class="roof" /><rect x="-44.4" y="-44.4" width="28.8" height="28.8" rx="1" class="house" /><rect x="-40.4" y="-40.4" width="20.8" height="20.8" rx="0.8" class="roof" /><rect x="-14.4" y="-44.4" width="28.8" height="28.8" rx="1" class="house" /><rect x="-10.4" y="-40.4" width="20.8" height="20.8" rx="0.8" class="roof" /><rect x="15.6" y="-44.4" width="28.8" height="28.8" rx="1" class="house" /><rect x="19.6" y="-40.4" width="20.8" height="20.8" rx="0.8" class="roof" /><rect x="15.6" y="15.6" width="28.8" height="28.8" rx="1" class="house" /><rect x="19.6" y="19.6" width="20.8" height="20.8" rx="0.8" class="roof" /><line x1="0" y1="-10.5" x2="0" y2="-15.6" class="beam" /><path d="M -10.83 6.25 A 12.5 12.5 0 0 1 -10.83 -6.25" class="rot" /><polygon points="-10.53,-6.77 -10.67,-4.78 -12.18,-5.64" class="mkf" /><polygon points="-10.53,6.77 -12.18,5.64 -10.67,4.78" class="mkf" /><path d="M 10.83 -6.25 A 12.5 12.5 0 0 1 10.83 6.25" class="rot" /><polygon points="10.53,6.77 10.67,4.78 12.18,5.64" class="mkf" /><polygon points="10.53,-6.77 12.18,-5.64 10.67,-4.78" class="mkf" /><g transform="translate(0 0) rotate(0) scale(1.0)"><rect x="-5.6" y="-7" width="11.2" height="17" rx="1.2" class="lego" /><rect x="-4.6" y="-1.5" width="9.2" height="10" rx="0.8" class="brick" /><text x="0" y="3.9" font-size="1.5" text-anchor="middle" class="t on-brick" >BrickPi</text><rect x="-7.7" y="-2.15" width="2.2" height="4.3" rx="0.6" class="tyre" /><rect x="-5.4" y="-6.6" width="2" height="2" rx="0.3" class="csens" /><rect x="5.5" y="-2.15" width="2.2" height="4.3" rx="0.6" class="tyre" /><rect x="3.4" y="-6.6" width="2" height="2" rx="0.3" class="csens" /><circle cx="0" cy="8.7" r="0.9" class="caster" /><rect x="-3.2" y="-9.7" width="6.4" height="2.2" rx="0.6" class="us" /><circle cx="-1.6" cy="-9.8" r="0.75" class="us-eye" /><circle cx="1.6" cy="-9.8" r="0.75" class="us-eye" /></g><g opacity="0.22" transform="translate(0 0) rotate(-90) scale(1.0)"><rect x="-5.6" y="-7" width="11.2" height="17" rx="1.2" class="lego" /><rect x="-4.6" y="-1.5" width="9.2" height="10" rx="0.8" class="brick" /><text x="0" y="3.9" font-size="1.5" text-anchor="middle" class="t on-brick" >BrickPi</text><rect x="-7.7" y="-2.15" width="2.2" height="4.3" rx="0.6" class="tyre" /><rect x="-5.4" y="-6.6" width="2" height="2" rx="0.3" class="csens" /><rect x="5.5" y="-2.15" width="2.2" height="4.3" rx="0.6" class="tyre" /><rect x="3.4" y="-6.6" width="2" height="2" rx="0.3" class="csens" /><circle cx="0" cy="8.7" r="0.9" class="caster" /><rect x="-3.2" y="-9.7" width="6.4" height="2.2" rx="0.6" class="us" /><circle cx="-1.6" cy="-9.8" r="0.75" class="us-eye" /><circle cx="1.6" cy="-9.8" r="0.75" class="us-eye" /></g><g opacity="0.22" transform="translate(0 0) rotate(90) scale(1.0)"><rect x="-5.6" y="-7" width="11.2" height="17" rx="1.2" class="lego" /><rect x="-4.6" y="-1.5" width="9.2" height="10" rx="0.8" class="brick" /><text x="0" y="3.9" font-size="1.5" text-anchor="middle" class="t on-brick" >BrickPi</text><rect x="-7.7" y="-2.15" width="2.2" height="4.3" rx="0.6" class="tyre" /><rect x="-5.4" y="-6.6" width="2" height="2" rx="0.3" class="csens" /><rect x="5.5" y="-2.15" width="2.2" height="4.3" rx="0.6" class="tyre" /><rect x="3.4" y="-6.6" width="2" height="2" rx="0.3" class="csens" /><circle cx="0" cy="8.7" r="0.9" class="caster" /><rect x="-3.2" y="-9.7" width="6.4" height="2.2" rx="0.6" class="us" /><circle cx="-1.6" cy="-9.8" r="0.75" class="us-eye" /><circle cx="1.6" cy="-9.8" r="0.75" class="us-eye" /></g></svg></div><figcaption>A fixed forward sonar. The robot turns in place to point it left and right, which only works because its turn radius (~13 cm) is under half the street width.</figcaption></figure>
+          <div class="d-text">
+            <p>Same logic as P1-A, but the whole robot turns: −90°, read, +180°, read, −90°, then read ahead. Use the gyro for these turns. Your encoder-only <code>turn_to</code> will accumulate error over dozens of scans.</p>
+            <div class="ports" aria-label="Port map"><div class="free"><b>A</b>free</div><div><b>B</b>left drive</div><div><b>C</b>right drive</div><div class="free"><b>D</b>free</div><div><b>S1</b>ultrasonic</div><div><b>S2</b>colour R</div><div><b>S3</b>gyro</div><div><b>S4</b>colour L</div></div>
+            <div class="pc"><div class="pro"><h4>Good</h4><ul><li>Runs on your current robot plus a sonar mount</li><li>Lets you write and test the explorer now</li><li>Same map output as P1-A, so it's a drop-in swap later</li></ul></div>
+              <div class="con"><h4>Watch</h4><ul><li>~6–8 s of turning per tile</li><li>Heading error grows until the next line snap</li><li>Margin is ~2 cm, so measure your real footprint first</li></ul></div></div>
+          </div>
+        </div>
+      </article>
+
+      <article class="design" id="p1c">
+        <div class="d-head"><span class="d-code">P1-C</span><h3>Bumper and side-sonar wall follower</h3><span class="verdict v-alt">Alternative</span></div>
+        <div class="d-body">
+          <figure><div class="svgbox"><svg class="fig-svg sq" viewBox="-46 -46 92 92" style="min-width:420px" role="img" aria-label="Bumper and side sonar wall-follower path through a right turn" xmlns="http://www.w3.org/2000/svg"><rect x="-45" y="-45" width="90" height="90" rx="0" class="floor" /><line x1="-75" y1="-45" x2="-75" y2="45" class="gl" /><line x1="-45" y1="-75" x2="45" y2="-75" class="gl" /><line x1="-45" y1="-45" x2="-45" y2="45" class="gl" /><line x1="-45" y1="-45" x2="45" y2="-45" class="gl" /><line x1="-15" y1="-45" x2="-15" y2="45" class="gl" /><line x1="-45" y1="-15" x2="45" y2="-15" class="gl" /><line x1="15" y1="-45" x2="15" y2="45" class="gl" /><line x1="-45" y1="15" x2="45" y2="15" class="gl" /><rect x="-44.4" y="15.6" width="28.8" height="28.8" rx="1" class="house" /><rect x="-40.4" y="19.6" width="20.8" height="20.8" rx="0.8" class="roof" /><rect x="-44.4" y="-14.4" width="28.8" height="28.8" rx="1" class="house" /><rect x="-40.4" y="-10.4" width="20.8" height="20.8" rx="0.8" class="roof" /><rect x="-44.4" y="-44.4" width="28.8" height="28.8" rx="1" class="house" /><rect x="-40.4" y="-40.4" width="20.8" height="20.8" rx="0.8" class="roof" /><rect x="-14.4" y="-44.4" width="28.8" height="28.8" rx="1" class="house" /><rect x="-10.4" y="-40.4" width="20.8" height="20.8" rx="0.8" class="roof" /><rect x="15.6" y="-44.4" width="28.8" height="28.8" rx="1" class="house" /><rect x="19.6" y="-40.4" width="20.8" height="20.8" rx="0.8" class="roof" /><rect x="15.6" y="15.6" width="28.8" height="28.8" rx="1" class="house" /><rect x="19.6" y="19.6" width="20.8" height="20.8" rx="0.8" class="roof" /><polyline points="0,40 0,-2 8,-4 40,-4" class="route" /><polygon points="42,-4 38.94,-2.52 38.94,-5.48" class="route-head" /><g transform="translate(0 22) rotate(0) scale(1.0)"><rect x="-5.6" y="-7" width="11.2" height="17" rx="1.2" class="lego" /><rect x="-4.6" y="-1.5" width="9.2" height="10" rx="0.8" class="brick" /><text x="0" y="3.9" font-size="1.5" text-anchor="middle" class="t on-brick" >BrickPi</text><rect x="-7.7" y="-2.15" width="2.2" height="4.3" rx="0.6" class="tyre" /><rect x="-5.4" y="-6.6" width="2" height="2" rx="0.3" class="csens" /><rect x="5.5" y="-2.15" width="2.2" height="4.3" rx="0.6" class="tyre" /><rect x="3.4" y="-6.6" width="2" height="2" rx="0.3" class="csens" /><circle cx="0" cy="8.7" r="0.9" class="caster" /><rect x="-7.75" y="-10.3" width="15.5" height="1.4" rx="0.4" class="card" /><rect x="-4.7" y="-9.1" width="2.4" height="1.8" rx="0.3" class="touch" /><rect x="2.3" y="-9.1" width="2.4" height="1.8" rx="0.3" class="touch" /><rect x="-8" y="-8.8" width="2.2" height="6.4" rx="0.5" class="us" /><circle cx="-8" cy="-7.2" r="0.65" class="us-eye" /><circle cx="-8" cy="-4" r="0.65" class="us-eye" /></g><line x1="-8" y1="16.4" x2="-15.6" y2="16.4" class="beam" /><text x="-11.8" y="14.4" font-size="3" text-anchor="middle" class="t tb" >≈ 7 cm</text><text x="2.6" y="-18.5" font-size="3" text-anchor="start" class="t tb" >bump → turn right</text></svg></div><figcaption>Keep the left house at a fixed distance. Turn left when the left reading jumps, turn right when the bumper hits. Contact is allowed in phase 1.</figcaption></figure>
+          <div class="d-text">
+            <p>A cardboard bumper bar on one or two touch sensors, and the sonar facing left. The robot drives continuously with a PD controller on the left distance, so it uses the left-hand rule. It snaps its pose on each grid line and records a tile every time it crosses one.</p>
+            <div class="ports" aria-label="Port map"><div class="free"><b>A</b>free</div><div><b>B</b>left drive</div><div><b>C</b>right drive</div><div class="free"><b>D</b>free</div><div><b>S1</b>ultrasonic (left)</div><div><b>S2</b>colour R</div><div class="new"><b>S3</b>bumper</div><div><b>S4</b>colour L</div></div>
+            <div class="pc"><div class="pro"><h4>Good</h4><ul><li>Fastest, since it never stops to scan</li><li>The bumper can't misread a house</li><li>Also gives lateral position, which line snaps don't</li></ul></div>
+              <div class="con"><h4>Watch</h4><ul><li>Sonar readings at an opening's edge are messy</li><li>Each bump shoves the pose. Re-snap on the next line</li><li>No port left for the gyro</li></ul></div></div>
+          </div>
+        </div>
+      </article>
+
+      <article class="design" id="p1d">
+        <div class="d-head"><span class="d-code">P1-D</span><h3>One chassis, swappable tools</h3><span class="verdict v-alt">Pairs with any</span></div>
+        <div class="d-body wide">
+          <figure><div class="svgbox"><svg class="fig-svg" viewBox="-16.5 -16 46 19.5" style="min-width:560px" role="img" aria-label="Shared chassis with a tool plate that takes either the phase 1 sensor module or the phase 2 intake" xmlns="http://www.w3.org/2000/svg"><line x1="-16" y1="0" x2="30" y2="0" class="floorline" /><rect x="-8.5" y="-6" width="12" height="4.6" rx="0.8" class="lego" /><rect x="-10.5" y="-7" width="15.5" height="1" rx="0.2" class="lego2" /><circle cx="0" cy="-2.15" r="2.15" class="tyre" /><circle cx="0" cy="-2.15" r="1.35" class="hub" /><circle cx="0" cy="-2.15" r="0.35" class="lego2" /><rect x="-10" y="-2.4" width="1.6" height="1.4" rx="0.2" class="lego2" /><circle cx="-9.2" cy="-0.6" r="0.6" class="caster" /><rect x="2.6" y="-2.7" width="1.5" height="2.1" rx="0.25" class="csens" /><rect x="-9.5" y="-8.4" width="8" height="3.2" rx="0.5" class="brick" /><rect x="5.2" y="-8.6" width="1" height="7" rx="0.2" class="lego2" /><text x="5.7" y="-9.6" font-size="0.8" text-anchor="middle" class="t tb" >tool plate</text><g transform="translate(1 0)"><rect x="8" y="-10.5" width="4.8" height="2.2" rx="0.3" class="lego" /><rect x="8.3" y="-12.4" width="4.2" height="1.9" rx="0.4" class="us" /><circle cx="9.4" cy="-11.45" r="0.45" class="us-eye" /><circle cx="11.4" cy="-11.45" r="0.45" class="us-eye" /><rect x="7.2" y="-9" width="1.2" height="3.2" rx="0.2" class="lego2" /></g><text x="11.4" y="-14" font-size="0.8" text-anchor="middle" class="t tb" >phase 1 module</text><line x1="14.4" y1="-6" x2="19.4" y2="-6" class="rot" /><polygon points="19.4,-6 18.59,-5.61 18.59,-6.39" class="mkf" /><polygon points="21.5,-0.2 27.8,-0.15 27.8,-1.2 22.6,-6.5 21.5,-6.5" class="card" /><circle cx="25.6" cy="-4.3" r="2.2" class="paperroll" /><circle cx="25.6" cy="-4.3" r="0.5" class="lego2" /><text x="24.6" y="-9.6" font-size="0.8" text-anchor="middle" class="t tb" >phase 2 module</text><text x="-15.5" y="2.2" font-size="0.8" text-anchor="start" class="t tm" >swap with 4 pins; wheel radius and track width stay calibrated</text></svg></div><figcaption>Build the base once with a pinned front tool plate. Phase 1 mounts the sensor module, phase 2 the intake, and the hopper bolts on top.</figcaption></figure>
+          <p>The point is to keep wheels, motors and line sensors untouched between phases, so <code>WHEEL_RADIUS</code>, <code>TRACK_WIDTH</code> and <code>SENSOR_OFFSET</code> stay calibrated and the map recorded in phase 1 still matches how the phase 2 robot drives. Put the turret and the intake on 4 friction pins each, and swap ports D and A in software with one config switch.</p>
+        </div>
+      </article>
+
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>Phase 1</th><th>Ease of build</th><th>Time per tile</th><th>Reading quality</th><th>Pose accuracy</th><th>Free ports</th></tr></thead>
+          <tbody>
+            <tr><td>P1-A turret</td><td class="dots">●●<i>●</i></td><td>~7 s</td><td class="dots">●●●</td><td class="dots">●●●</td><td>A</td></tr>
+            <tr><td>P1-B spin-scan</td><td class="dots">●●●</td><td>~13 s</td><td class="dots">●●●</td><td class="dots">●●<i>●</i></td><td>A, D</td></tr>
+            <tr><td>P1-C wall follower</td><td class="dots">●●<i>●</i></td><td>~6 s</td><td class="dots">●●<i>●</i></td><td class="dots">●<i>●●</i></td><td>A, D</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="phase2">
+      <div class="sec-head"><div class="label">05 · Phase 2 hardware</div><h2>Collecting the snow</h2>
+        <p>Phase 2 needs a mechanism that lifts pom-poms off the floor into something the robot carries, holds about a litre, fits the checker limits and lets go at the drop point. That takes two mechanism motors next to the two drive motors, so ports A and D are both used. Line sensors stay, which leaves one sensor port for the gyro and one for the ultrasonic sensor or a limit switch.</p></div>
+
+      <article class="design pick" id="p2a">
+        <div class="d-head"><span class="d-code">P2-A</span><h3>Roller sweeper with tilting hopper</h3><span class="verdict v-pick">Recommended</span></div>
+        <div class="d-body">
+          <figure><div class="svgbox"><svg class="fig-svg" viewBox="-17.5 -23.5 44 29.5" style="min-width:400px" role="img" aria-label="Side view of the roller sweeper: roller with flaps, ramp, hood and tilting hopper" xmlns="http://www.w3.org/2000/svg"><line x1="-15" y1="0" x2="26" y2="0" class="floorline" /><rect x="-8.5" y="-6" width="12" height="4.6" rx="0.8" class="lego" /><rect x="-10.5" y="-7" width="15.5" height="1" rx="0.2" class="lego2" /><circle cx="0" cy="-2.15" r="2.15" class="tyre" /><circle cx="0" cy="-2.15" r="1.35" class="hub" /><circle cx="0" cy="-2.15" r="0.35" class="lego2" /><rect x="-10" y="-2.4" width="1.6" height="1.4" rx="0.2" class="lego2" /><circle cx="-9.2" cy="-0.6" r="0.6" class="caster" /><rect x="2.6" y="-2.7" width="1.5" height="2.1" rx="0.25" class="csens" /><rect x="-13.6" y="-11.5" width="3.2" height="9" rx="0.5" class="brick" /><polyline points="2.6,-7.2 -9.4,-7.2 -9.4,-15.6 -1,-15.6" class="card hop" /><polyline points="-2.52,-17.03 -9.4,-7.2 -16.28,-12.02 -11.46,-18.9" class="ghost" /><text x="-17" y="-21.6" font-size="1.15" text-anchor="start" class="t tm" >hopper tilts back to dump</text><circle cx="-9.4" cy="-7.2" r="0.45" class="lego2" /><line x1="6.2" y1="-0.15" x2="2.6" y2="-7.2" class="ramp" /><path d="M 12.15 -4.56 A 4.5 4.5 0 0 0 3.9 -5.65 L -1.0 -15.6" class="hood" /><circle cx="7.8" cy="-3.4" r="2.2" class="paperroll" /><line x1="9.97" y1="-3.02" x2="10.9" y2="-3.48" class="flap" /><line x1="9.06" y1="-1.6" x2="10.05" y2="-1.26" class="flap" /><line x1="7.42" y1="-1.23" x2="7.88" y2="-0.3" class="flap" /><line x1="6" y1="-2.14" x2="5.66" y2="-1.15" class="flap" /><line x1="5.63" y1="-3.78" x2="4.7" y2="-3.32" class="flap" /><line x1="6.54" y1="-5.2" x2="5.55" y2="-5.54" class="flap" /><line x1="8.18" y1="-5.57" x2="7.72" y2="-6.5" class="flap" /><line x1="9.6" y1="-4.66" x2="9.94" y2="-5.65" class="flap" /><circle cx="7.8" cy="-3.4" r="0.5" class="lego2" /><path d="M 11.56 -2.03 A 4 4 0 0 1 6.3 0.31" class="rot" /><polygon points="6.05,0.21 6.95,0.15 6.66,0.87" class="mkf" /><text x="7.2" y="-10.8" font-size="1.15" text-anchor="start" class="t tb" >roller, geared up 2–3×</text><text x="7.2" y="-9.4" font-size="1.15" text-anchor="start" class="t tm" >underside sweeps backward</text><circle cx="13.4" cy="-0.95" r="0.95" class="pom p1" /><circle cx="13.12" cy="-1.23" r="0.33" class="pom-hi" /><circle cx="17" cy="-1.25" r="1.25" class="pom p3" /><circle cx="16.62" cy="-1.62" r="0.44" class="pom-hi" /><circle cx="10.6" cy="-0.65" r="0.65" class="pom p0" /><circle cx="10.4" cy="-0.84" r="0.23" class="pom-hi" /><circle cx="4.6" cy="-4.9" r="0.9" class="pom p2" /><circle cx="4.33" cy="-5.17" r="0.32" class="pom-hi" /><circle cx="1.4" cy="-10.6" r="0.8" class="pom p0" /><circle cx="1.16" cy="-10.84" r="0.28" class="pom-hi" /><circle cx="-2" cy="-8.45" r="1.25" class="pom p4" /><circle cx="-2.38" cy="-8.82" r="0.44" class="pom-hi" /><circle cx="-5.2" cy="-8.3" r="1.1" class="pom p5" /><circle cx="-5.53" cy="-8.63" r="0.39" class="pom-hi" /><circle cx="-3.8" cy="-10.4" r="0.95" class="pom p1" /><circle cx="-4.08" cy="-10.69" r="0.33" class="pom-hi" /><circle cx="-7.6" cy="-8.15" r="0.95" class="pom p3" /><circle cx="-7.88" cy="-8.44" r="0.33" class="pom-hi" /><text x="6.7" y="1.6" font-size="1.15" text-anchor="middle" class="t tm" >lip ≈ 2 mm</text><text x="3" y="-3" font-size="1.15" text-anchor="end" class="t tm" >ramp</text><line x1="0" y1="4.6" x2="10.9" y2="4.6" class="dim" /><line x1="0" y1="3.6" x2="0" y2="5.6" class="dim" /><line x1="10.9" y1="3.6" x2="10.9" y2="5.6" class="dim" /><text x="5.45" y="4.08" font-size="1.15" text-anchor="middle" class="t dimt" >front ≤ 11 cm ahead of axle</text><text x="-12" y="-6.4" font-size="1.15" text-anchor="middle" class="t on-brick" transform="rotate(-90 -12 -6.4)">brick</text><text x="-3.4" y="-16.6" font-size="1.15" text-anchor="middle" class="t tb" >hopper ≈ 1 L</text></svg></div><figcaption>Side view, to scale in cm. The roller's underside sweeps backward, pulling pom-poms over a flat card lip and up a short ramp into a hopper above the axle.</figcaption></figure>
+          <figure><div class="svgbox"><svg class="fig-svg sq" viewBox="-26 -20 52 40" style="min-width:420px" role="img" aria-label="Top view of the roller sweeper footprint inside a 30 cm street" xmlns="http://www.w3.org/2000/svg"><rect x="-26" y="-20" width="52" height="40" rx="0" class="floor" /><rect x="-26" y="-20" width="10.4" height="40" rx="0.8" class="house" /><rect x="15.6" y="-20" width="10.4" height="40" rx="0.8" class="house" /><line x1="-15" y1="-20" x2="-15" y2="20" class="wallface" /><line x1="15" y1="-20" x2="15" y2="20" class="wallface" /><rect x="-8" y="-6" width="16" height="16" rx="1.2" class="lego" /><rect x="-7.7" y="-2.15" width="2.2" height="4.3" rx="0.5" class="tyre" /><rect x="-5.4" y="-4.2" width="2" height="2" rx="0.3" class="csens" /><rect x="5.5" y="-2.15" width="2.2" height="4.3" rx="0.5" class="tyre" /><rect x="3.4" y="-4.2" width="2" height="2" rx="0.3" class="csens" /><rect x="-5" y="-2" width="10" height="9.4" rx="0.4" class="card hop-top" /><text x="0" y="6" font-size="1.2" text-anchor="middle" class="t" >hopper</text><polygon points="12.5,-3 12.5,-7 8.5,-11 -8.5,-11 -12.5,-7 -12.5,-3" class="card intake" /><rect x="-11.3" y="-9.3" width="22.6" height="2.6" rx="1" class="paperroll" /><text x="0" y="-7.5" font-size="1.12" text-anchor="middle" class="t" >roller</text><line x1="-12.5" y1="-14.2" x2="12.5" y2="-14.2" class="dim" /><line x1="-12.5" y1="-15.2" x2="-12.5" y2="-13.2" class="dim" /><line x1="12.5" y1="-15.2" x2="12.5" y2="-13.2" class="dim" /><text x="0" y="-14.88" font-size="1.5" text-anchor="middle" class="t dimt" >25 cm</text><text x="13.1" y="-12" font-size="1.2" text-anchor="start" class="t tb" >4 cm chamfer</text><line x1="12.5" y1="16" x2="15" y2="16" class="dim" /><line x1="12.5" y1="15.4" x2="12.5" y2="16.6" class="dim" /><line x1="15" y1="15.4" x2="15" y2="16.6" class="dim" /><text x="13.75" y="15.46" font-size="1.2" text-anchor="middle" class="t dimt" >2.5</text><line x1="-15" y1="16" x2="-12.5" y2="16" class="dim" /><line x1="-15" y1="15.4" x2="-15" y2="16.6" class="dim" /><line x1="-12.5" y1="15.4" x2="-12.5" y2="16.6" class="dim" /><text x="-13.75" y="15.46" font-size="1.2" text-anchor="middle" class="t dimt" >2.5</text><line x1="-24" y1="0" x2="24" y2="0" class="axle" /><text x="-23.6" y="-0.7" font-size="1.2" text-anchor="start" class="t on-house" >axle</text><text x="0" y="19" font-size="1.2" text-anchor="middle" class="t tm" >colour sensors sit behind the intake, on swept floor</text></svg></div><figcaption>Top view in a 30 cm street. The chamfered corners are what make the corner turn possible.</figcaption></figure>
+        </div>
+        <div class="d-body">
+          <div class="d-text">
+            <p class="note warn"><b>Update after the prototype:</b> see <a href="#roller-v2">Roller v2</a>. The roller now drops pom-poms into a low tray instead of lifting them to a hopper.</p>
+            <p><b>Roller:</b> a paper-towel tube with 6–8 paper or thin-card flaps taped along it, on a LEGO axle through card end plugs. Drive it from the medium motor and gear it up 2–3× with the kit gears. At 250 rpm direct the flap tips move ~0.8 m/s, which only flings a pom-pom ~3 cm up. Faster clears the ramp. Let the flaps just brush the ramp.</p>
+            <p><b>Ramp and hood:</b> card ramp taped flat to a thin lip (~2 mm), side walls from the white panels, and a card hood over the roller so nothing is thrown forward. <b>Hopper:</b> ~10 × 18 × 7 cm card box over the axle, hinged at the back. The NXT motor tilts it to dump behind the robot, so reverse up to the drop point.</p>
+          </div>
+          <div class="d-text">
+            <div class="ports" aria-label="Port map"><div class="new"><b>A</b>roller (medium)</div><div><b>B</b>left drive</div><div><b>C</b>right drive</div><div class="new"><b>D</b>hopper tilt (NXT)</div><div><b>S1</b>ultrasonic</div><div><b>S2</b>colour R</div><div><b>S3</b>gyro</div><div><b>S4</b>colour L</div></div>
+            <div class="pc"><div class="pro"><h4>Good</h4><ul><li>One continuous pass, no stopping per tile</li><li>Flexible flaps cope with the size mix</li><li>Reverse the roller to clear a jam</li><li>The 25 cm width misses only ~5 of 50 on a centred pass</li></ul></div>
+              <div class="con"><h4>Watch</h4><ul><li>The lip height is everything. Test on the real board surface</li><li>Pom-poms can wedge between flaps and hood. Keep that gap near the smallest pom-pom</li><li>Corner turn margin is ~1.6 cm, so turn with the gyro</li></ul></div></div>
+          </div>
+        </div>
+      </article>
+
+      <article class="design" id="p2b">
+        <div class="d-head"><span class="d-code">P2-B</span><h3>Cleated conveyor</h3><span class="verdict v-alt">Alternative</span></div>
+        <div class="d-body">
+          <figure><div class="svgbox"><svg class="fig-svg" viewBox="-17 -17.8 43 21.6" style="min-width:400px" role="img" aria-label="Side view of the cleated conveyor lifting pom-poms into a hopper" xmlns="http://www.w3.org/2000/svg"><line x1="-16" y1="0" x2="26" y2="0" class="floorline" /><rect x="-8.5" y="-6" width="12" height="4.6" rx="0.8" class="lego" /><rect x="-10.5" y="-7" width="15.5" height="1" rx="0.2" class="lego2" /><circle cx="0" cy="-2.15" r="2.15" class="tyre" /><circle cx="0" cy="-2.15" r="1.35" class="hub" /><circle cx="0" cy="-2.15" r="0.35" class="lego2" /><rect x="-10" y="-2.4" width="1.6" height="1.4" rx="0.2" class="lego2" /><circle cx="-9.2" cy="-0.6" r="0.6" class="caster" /><rect x="2.6" y="-2.7" width="1.5" height="2.1" rx="0.25" class="csens" /><rect x="-15.8" y="-11" width="3.2" height="8.6" rx="0.5" class="brick" /><line x1="9" y1="-2.43" x2="-0.6" y2="-14.03" class="belt" /><line x1="7" y1="-0.77" x2="-2.6" y2="-12.37" class="belt" /><circle cx="8" cy="-1.6" r="1.3" class="lego2" /><circle cx="-1.6" cy="-13.2" r="1.3" class="lego2" /><line x1="8.05" y1="-3.58" x2="9.2" y2="-4.54" class="cleat" /><line x1="6.39" y1="-5.59" x2="7.54" y2="-6.54" class="cleat" /><line x1="4.73" y1="-7.59" x2="5.89" y2="-8.55" class="cleat" /><line x1="3.07" y1="-9.59" x2="4.23" y2="-10.55" class="cleat" /><line x1="1.41" y1="-11.6" x2="2.57" y2="-12.55" class="cleat" /><line x1="-0.24" y1="-13.6" x2="0.91" y2="-14.56" class="cleat" /><polyline points="11.4,-0.12 8.6,-0.25 8.4,-0.6" class="card" /><line x1="11.4" y1="-0.12" x2="8.3" y2="-0.32" class="ramp" /><circle cx="14" cy="-1" r="1" class="pom p2" /><circle cx="13.7" cy="-1.3" r="0.35" class="pom-hi" /><circle cx="7.78" cy="-5.31" r="0.9" class="pom p0" /><circle cx="7.51" cy="-5.58" r="0.32" class="pom-hi" /><circle cx="4.62" cy="-9.45" r="1.1" class="pom p3" /><circle cx="4.29" cy="-9.78" r="0.39" class="pom-hi" /><circle cx="1.58" cy="-12.65" r="0.8" class="pom p5" /><circle cx="1.34" cy="-12.89" r="0.28" class="pom-hi" /><polyline points="-2.6,-11 -2.6,-7 -12,-7 -12,-14.6" class="card hop" /><circle cx="-6" cy="-8.1" r="1.1" class="pom p1" /><circle cx="-6.33" cy="-8.43" r="0.39" class="pom-hi" /><circle cx="-9" cy="-8.2" r="1.2" class="pom p4" /><circle cx="-9.36" cy="-8.56" r="0.42" class="pom-hi" /><circle cx="-4" cy="-8" r="1" class="pom p2" /><circle cx="-4.3" cy="-8.3" r="0.35" class="pom-hi" /><line x1="-2.6" y1="-7" x2="-1.2" y2="-3.4" class="ghost-line" /><text x="-16.6" y="-15.8" font-size="1.15" text-anchor="start" class="t tm" >hopper floor flap opens to dump</text><text x="4.6" y="-11.6" font-size="1.15" text-anchor="start" class="t tb" >cleated belt</text><text x="11" y="1.4" font-size="1.15" text-anchor="middle" class="t tm" >wedge</text><text x="-14.2" y="-6.7" font-size="1.15" text-anchor="middle" class="t on-brick" transform="rotate(-90 -14.2 -6.7)">brick</text></svg></div><figcaption>A wedge feeds the bottom of an inclined belt. Cleats carry each pom-pom up and drop it into a hopper with a rear flap.</figcaption></figure>
+          <div class="d-text">
+            <p>The belt can be a loop of paper reinforced with tape, with card cleats every ~2.5 cm, running on two axles. Or use the kit's rubber tread loops at the edges as drive bands with a card belt between them. The NXT motor drives the top axle. The medium motor opens a rear flap or floor trapdoor at the drop point.</p>
+            <div class="ports" aria-label="Port map"><div class="new"><b>A</b>belt (NXT)</div><div><b>B</b>left drive</div><div><b>C</b>right drive</div><div class="new"><b>D</b>flap (medium)</div><div><b>S1</b>ultrasonic</div><div><b>S2</b>colour R</div><div><b>S3</b>gyro</div><div><b>S4</b>colour L</div></div>
+            <div class="pc"><div class="pro"><h4>Good</h4><ul><li>Positive lift: nothing falls back down</li><li>Works with a slow, strong motor</li><li>Can be narrow and long, which suits the corner checker</li></ul></div>
+              <div class="con"><h4>Watch</h4><ul><li>Paper belts slip and wander. Expect a few rebuilds</li><li>The wedge-to-belt handoff is a jam point</li><li>The longest build of the four</li></ul></div></div>
+          </div>
+        </div>
+      </article>
+
+      <article class="design" id="p2c">
+        <div class="d-head"><span class="d-code">P2-C</span><h3>Overshot bucket loader</h3><span class="verdict v-back">Backup</span></div>
+        <div class="d-body">
+          <figure><div class="svgbox"><svg class="fig-svg" viewBox="-16.5 -28 44 34" style="min-width:400px" role="img" aria-label="Side view of the overshot bucket loader with the bucket lowered and its swing path drawn faintly" xmlns="http://www.w3.org/2000/svg"><line x1="-16" y1="0" x2="27" y2="0" class="floorline" /><rect x="-8.5" y="-6" width="12" height="4.6" rx="0.8" class="lego" /><rect x="-10.5" y="-7" width="15.5" height="1" rx="0.2" class="lego2" /><circle cx="0" cy="-2.15" r="2.15" class="tyre" /><circle cx="0" cy="-2.15" r="1.35" class="hub" /><circle cx="0" cy="-2.15" r="0.35" class="lego2" /><rect x="-10" y="-2.4" width="1.6" height="1.4" rx="0.2" class="lego2" /><circle cx="-9.2" cy="-0.6" r="0.6" class="caster" /><rect x="2.6" y="-2.7" width="1.5" height="2.1" rx="0.25" class="csens" /><rect x="-8.6" y="-10.4" width="9" height="3.2" rx="0.5" class="brick" /><polyline points="-4,-17 -4,-12 -13,-12 -13,-17" class="card hop" /><line x1="-6" y1="-10.4" x2="-6" y2="-12" class="lego-line" /><line x1="-11" y1="-10.4" x2="-11" y2="-12" class="lego-line" /><polyline points="-12.6,-23.9 -4,-23.9 -3.6,-23.5 -3.6,-17.4 -6.6,-16.6" class="ghost" /><line x1="1" y1="-12" x2="-3.9" y2="-18" class="ghost-line" /><polyline points="11.67,-26.59 12.42,-18.02 12.06,-17.58 5.98,-17.05 4.92,-19.97" class="ghost faint" /><line x1="1" y1="-12" x2="6.55" y2="-17.4" class="ghost-line" /><polyline points="14.6,-0.1 6,-0.1 5.6,-0.5 5.6,-6.6 8.6,-7.4" class="card bucket" /><line x1="1" y1="-12" x2="5.9" y2="-6" class="arm" /><circle cx="1" cy="-12" r="0.7" class="lego2" /><rect x="-0.4" y="-12.4" width="2.6" height="6" rx="0.3" class="lego" /><circle cx="8.2" cy="-1" r="1" class="pom p1" /><circle cx="7.9" cy="-1.3" r="0.35" class="pom-hi" /><circle cx="10.6" cy="-1.25" r="1.25" class="pom p4" /><circle cx="10.22" cy="-1.62" r="0.44" class="pom-hi" /><circle cx="12.9" cy="-0.75" r="0.65" class="pom p2" /><circle cx="12.71" cy="-0.95" r="0.23" class="pom-hi" /><circle cx="18" cy="-0.95" r="0.95" class="pom p3" /><circle cx="17.71" cy="-1.23" r="0.33" class="pom-hi" /><circle cx="-7" cy="-13.1" r="1.1" class="pom p0" /><circle cx="-7.33" cy="-13.43" r="0.39" class="pom-hi" /><circle cx="-9.6" cy="-13.2" r="1.2" class="pom p5" /><circle cx="-9.96" cy="-13.56" r="0.42" class="pom-hi" /><text x="-16" y="-26" font-size="1.15" text-anchor="start" class="t tm" >arm swings the bucket over the top</text><text x="10" y="1.4" font-size="1.15" text-anchor="middle" class="t tm" >thin card lip on the floor</text><text x="-4.1" y="-9.2" font-size="1.15" text-anchor="middle" class="t on-brick" >brick</text><line x1="0" y1="4.8" x2="14.6" y2="4.8" class="dim" /><line x1="0" y1="3.8" x2="0" y2="5.8" class="dim" /><line x1="14.6" y1="3.8" x2="14.6" y2="5.8" class="dim" /><text x="7.3" y="4.28" font-size="1.15" text-anchor="middle" class="t dimt" >≈ 15 cm out front when lowered</text></svg></div><figcaption>The same idea as a mining overshot loader. Scoop with the bucket down, then swing it over the robot into the hopper. Faint outlines show the swing.</figcaption></figure>
+          <div class="d-text">
+            <p>A card dustpan on a LEGO arm, geared down from an NXT motor. Drive one tile with the bucket down so pom-poms slide onto its floor. Then lift, swing over and tip into the rear hopper, lower again and repeat. A raised bucket also shrinks the footprint, so corners become easy if you only turn with it up.</p>
+            <div class="ports" aria-label="Port map"><div class="new"><b>A</b>arm (NXT)</div><div><b>B</b>left drive</div><div><b>C</b>right drive</div><div class="new"><b>D</b>hopper flap (medium)</div><div><b>S1</b>ultrasonic</div><div><b>S2</b>colour R</div><div><b>S3</b>gyro</div><div><b>S4</b>colour L</div></div>
+            <div class="pc"><div class="pro"><h4>Good</h4><ul><li>Fewest moving parts and easy to explain at the demo</li><li>Very hard to jam</li><li>Turns like the bare robot when the bucket is up</li></ul></div>
+              <div class="con"><h4>Watch</h4><ul><li>The lip pushes some light pom-poms ahead (check the rule)</li><li>Stopping to cycle every tile is slow (~5 s each)</li><li>With the bucket down it can't turn at a corner (reach 15 cm)</li></ul></div></div>
+          </div>
+        </div>
+      </article>
+
+      <article class="design" id="p2d">
+        <div class="d-head"><span class="d-code">P2-D</span><h3>Corner spinners into a narrow roller</h3><span class="verdict v-alt">Upgrade</span></div>
+        <div class="d-body">
+          <figure><div class="svgbox"><svg class="fig-svg sq" viewBox="-26 -20 52 40" style="min-width:420px" role="img" aria-label="Top view of two corner spinners funnelling edge pom-poms into a narrow centre roller" xmlns="http://www.w3.org/2000/svg"><rect x="-26" y="-20" width="52" height="40" rx="0" class="floor" /><rect x="-26" y="-20" width="10.4" height="40" rx="0.8" class="house" /><rect x="15.6" y="-20" width="10.4" height="40" rx="0.8" class="house" /><line x1="-15" y1="-20" x2="-15" y2="20" class="wallface" /><line x1="15" y1="-20" x2="15" y2="20" class="wallface" /><rect x="-8" y="-6" width="16" height="16" rx="1.2" class="lego" /><rect x="-7.7" y="-2.15" width="2.2" height="4.3" rx="0.5" class="tyre" /><rect x="5.5" y="-2.15" width="2.2" height="4.3" rx="0.5" class="tyre" /><polygon points="7.5,-4 7.5,-7.4 -7.5,-7.4 -7.5,-4" class="card" /><rect x="-7" y="-9.8" width="14" height="2.4" rx="1" class="paperroll" /><circle cx="-9.2" cy="-8.8" r="3.8" class="spin-zone" /><line x1="-9.2" y1="-8.8" x2="-5.63" y2="-10.1" class="flap" /><line x1="-9.2" y1="-8.8" x2="-7.9" y2="-5.23" class="flap" /><line x1="-9.2" y1="-8.8" x2="-12.77" y2="-7.5" class="flap" /><line x1="-9.2" y1="-8.8" x2="-10.5" y2="-12.37" class="flap" /><circle cx="-9.2" cy="-8.8" r="0.7" class="lego2" /><path d="M -13.79 -11.45 A 5.3 5.3 0 0 1 -5.14 -12.21" class="rot" /><polygon points="-4.89,-11.91 -6.07,-12.44 -5.21,-13.17" class="mkf" /><circle cx="9.2" cy="-8.8" r="3.8" class="spin-zone" /><line x1="9.2" y1="-8.8" x2="12.77" y2="-7.5" class="flap" /><line x1="9.2" y1="-8.8" x2="7.9" y2="-5.23" class="flap" /><line x1="9.2" y1="-8.8" x2="5.63" y2="-10.1" class="flap" /><line x1="9.2" y1="-8.8" x2="10.5" y2="-12.37" class="flap" /><circle cx="9.2" cy="-8.8" r="0.7" class="lego2" /><path d="M 13.79 -11.45 A 5.3 5.3 0 0 0 5.14 -12.21" class="rot" /><polygon points="4.89,-11.91 5.21,-13.17 6.07,-12.44" class="mkf" /><circle cx="-13.3" cy="-15" r="1.25" class="pom p1" /><circle cx="-13.68" cy="-15.38" r="0.44" class="pom-hi" /><circle cx="13.6" cy="-16.5" r="0.95" class="pom p4" /><circle cx="13.31" cy="-16.79" r="0.33" class="pom-hi" /><circle cx="-3" cy="-15" r="0.95" class="pom p2" /><circle cx="-3.29" cy="-15.29" r="0.33" class="pom-hi" /><line x1="-12.3" y1="-13.6" x2="-7.4" y2="-11.2" class="route" /><polygon points="-7.4,-11.2 -8.6,-11.21 -8.14,-12.14" class="route-head" /><line x1="12.6" y1="-15.2" x2="7.4" y2="-11.2" class="route" /><polygon points="7.4,-11.2 7.94,-12.27 8.57,-11.45" class="route-head" /><text x="0" y="19" font-size="1.2" text-anchor="middle" class="t tm" >spinner fingers stop 1.5 cm short of the houses</text><text x="0" y="-1.6" font-size="1.12" text-anchor="middle" class="t" >narrow roller</text></svg></div><figcaption>Top view. Vertical spinners at the front corners rotate inward and push edge pom-poms toward a ~15 cm centre roller, like a robot vacuum's side brush.</figcaption></figure>
+          <div class="d-text">
+            <p>An add-on to P2-A for edge coverage. Drive the spinners from the roller motor through bevel gears so no extra port is needed. Their fingers must stop ~1.5 cm short of the houses, which is why they help less than they look like they should. Build this only if centred-pass misses turn out to matter on the real course.</p>
+            <div class="pc"><div class="pro"><h4>Good</h4><ul><li>Reaches pom-poms against the houses</li><li>Round spinners barely grow the turn radius</li></ul></div>
+              <div class="con"><h4>Watch</h4><ul><li>Gear train from one motor to three shafts</li><li>Fingers flick some pom-poms outward too</li></ul></div></div>
+          </div>
+        </div>
+      </article>
+
+      <div class="note"><div class="label">Wildcard: sticky drum</div><p>Tape wrapped sticky side out on a roller, like a lint roller, picks pom-poms up very reliably. The problem is getting them off at the drop point: a comb scraper fights the adhesive, and dust kills the tape in a few runs. Only worth asking about if dropping the whole drum counts as delivering.</p></div>
+
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>Phase 2</th><th>Pick-up reliability</th><th>Edge coverage</th><th>Speed</th><th>Ease of build</th><th>Jam resistance</th><th>Rule safety</th></tr></thead>
+          <tbody>
+            <tr><td>P2-A roller sweeper</td><td class="dots">●●●</td><td class="dots">●●<i>●</i></td><td class="dots">●●●</td><td class="dots">●●<i>●</i></td><td class="dots">●●<i>●</i></td><td class="dots">●●●</td></tr>
+            <tr><td>P2-B conveyor</td><td class="dots">●●●</td><td class="dots">●<i>●●</i></td><td class="dots">●●●</td><td class="dots">●<i>●●</i></td><td class="dots">●●<i>●</i></td><td class="dots">●●●</td></tr>
+            <tr><td>P2-C bucket loader</td><td class="dots">●●<i>●</i></td><td class="dots">●●<i>●</i></td><td class="dots">●<i>●●</i></td><td class="dots">●●●</td><td class="dots">●●●</td><td class="dots">●●<i>●</i></td></tr>
+            <tr><td>P2-A + D spinners</td><td class="dots">●●●</td><td class="dots">●●●</td><td class="dots">●●●</td><td class="dots">●<i>●●</i></td><td class="dots">●<i>●●</i></td><td class="dots">●●●</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="legend">More dots is better in every column. Rule safety is about the "no dragging" rule and contact with houses.</p>
+
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>Dump method</th><th>How</th><th>Fits</th><th>Catch</th></tr></thead>
+          <tbody>
+            <tr><td>Tilt hopper back</td><td>Hinge at rear floor edge, motor lifts the front</td><td>P2-A</td><td>Reverse up to the drop point; hopper must clear the brick</td></tr>
+            <tr><td>Rear flap or trapdoor</td><td>Card flap on a LEGO hinge, small arm opens it</td><td>P2-B, P2-C</td><td>Pom-poms bridge across narrow openings. Make it the full hopper width</td></tr>
+            <tr><td>Reverse the intake</td><td>Hopper floor slopes back down to the roller, which then runs backward</td><td>P2-A</td><td>Saves a motor, but pom-poms can slide out on the way. Needs a gate</td></tr>
+            <tr><td>Tip the bucket forward</td><td>Arm lowers past horizontal at the drop point</td><td>P2-C without hopper</td><td>Capacity is one bucket. Plan several trips</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="roller-v2">
+      <div class="sec-head"><div class="label">05b · Roller v2 · after the Nov 2 prototype</div><h2>Why the prototype missed, and a version that shouldn't</h2>
+        <p>Your prototype was close to what I drew, but the drawing hid the part that matters most: the roller, the curved guide under it and the frame holding both must be one rigid unit, so the gap between flap tips and guide stays the same everywhere. Your test pom-poms also look about 1.3–1.5 cm across (judging by the LEGO beams beside them), smaller than the 1–4 cm I assumed. That makes every clearance tighter.</p></div>
+
+      <div class="cols">
+        <figure><div class="svgbox"><svg class="fig-svg" viewBox="-15 -10.2 31 14.6" style="min-width:300px" role="img" aria-label="Front view of the prototype: held at one end, flaps only in the middle" xmlns="http://www.w3.org/2000/svg"><line x1="-15" y1="0" x2="15.5" y2="0" class="floorline" /><rect x="12" y="-8.2" width="1.2" height="8.2" rx="0.2" class="lego" /><rect x="11.2" y="-6.4" width="0.8" height="4.4" rx="0.2" class="lego2" /><polygon points="11.2,-6.6 -12.2,-5.3 -12.2,-1.3 11.2,-2.2" class="paperroll" /><rect x="-3.4" y="-8.1" width="2.1" height="2.2" rx="0.1" class="flapv1" /><rect x="-1" y="-8.3" width="2" height="1.8" rx="0.1" class="flapv1" /><rect x="1.4" y="-7.9" width="2.2" height="2.4" rx="0.1" class="flapv1" /><rect x="3.9" y="-8.2" width="1.9" height="2" rx="0.1" class="flapv1" /><rect x="-3" y="-1.6" width="2.2" height="2.6" rx="0.1" class="flapv1" /><rect x="-0.4" y="-1.8" width="2" height="2.3" rx="0.1" class="flapv1" /><rect x="2.4" y="-2" width="2.3" height="2.4" rx="0.1" class="flapv1" /><rect x="-3.6" y="2" width="7.8" height="0.5" rx="0" class="hit" /><text x="0.3" y="3.6" font-size="0.75" text-anchor="middle" class="t tb" >flaps reach ~10 cm of 24</text><text x="12.6" y="-9" font-size="0.75" text-anchor="middle" class="t tm" >held at one end</text><text x="-12" y="-6.4" font-size="0.75" text-anchor="start" class="t tm" >free end sags</text><circle cx="-11.2" cy="-0.7" r="0.7" class="pom pk" /><circle cx="-11.41" cy="-0.91" r="0.21" class="pom-hi" /><line x1="-12.1" y1="-2" x2="-10.3" y2="-3.4" class="miss" /><line x1="-12.1" y1="-3.4" x2="-10.3" y2="-2" class="miss" /><circle cx="-7.6" cy="-0.7" r="0.7" class="pom pk" /><circle cx="-7.81" cy="-0.91" r="0.21" class="pom-hi" /><line x1="-8.5" y1="-2" x2="-6.7" y2="-3.4" class="miss" /><line x1="-8.5" y1="-3.4" x2="-6.7" y2="-2" class="miss" /><circle cx="-4.2" cy="-0.7" r="0.7" class="pom pk" /><circle cx="-4.41" cy="-0.91" r="0.21" class="pom-hi" /><line x1="-5.1" y1="-2" x2="-3.3" y2="-3.4" class="miss" /><line x1="-5.1" y1="-3.4" x2="-3.3" y2="-2" class="miss" /><circle cx="-0.6" cy="-0.7" r="0.7" class="pom pk" /><circle cx="-0.81" cy="-0.91" r="0.21" class="pom-hi" /><circle cx="3.1" cy="-0.7" r="0.7" class="pom pk" /><circle cx="2.89" cy="-0.91" r="0.21" class="pom-hi" /><circle cx="6.9" cy="-0.7" r="0.7" class="pom pk" /><circle cx="6.69" cy="-0.91" r="0.21" class="pom-hi" /><line x1="6" y1="-2" x2="7.8" y2="-3.4" class="miss" /><line x1="6" y1="-3.4" x2="7.8" y2="-2" class="miss" /><circle cx="10.6" cy="-0.7" r="0.7" class="pom pk" /><circle cx="10.39" cy="-0.91" r="0.21" class="pom-hi" /><line x1="9.7" y1="-2" x2="11.5" y2="-3.4" class="miss" /><line x1="9.7" y1="-3.4" x2="11.5" y2="-2" class="miss" /></svg></div><figcaption>Your prototype, from the front (as I read the photos). Pom-poms outside the middle third never meet a flap, and the gap changes as the free end sags.</figcaption></figure>
+        <figure><div class="svgbox"><svg class="fig-svg" viewBox="-15 -10.2 31 14.6" style="min-width:300px" role="img" aria-label="Front view of roller v2: both ends supported, slit flaps along the full width" xmlns="http://www.w3.org/2000/svg"><line x1="-15" y1="0" x2="15.5" y2="0" class="floorline" /><rect x="-12.75" y="-8.2" width="0.7" height="7.9" rx="0.1" class="card" /><circle cx="-12.4" cy="-3.6" r="0.45" class="lego2" /><rect x="12.05" y="-8.2" width="0.7" height="7.9" rx="0.1" class="card" /><circle cx="12.4" cy="-3.6" r="0.45" class="lego2" /><line x1="-13.2" y1="-3.6" x2="14" y2="-3.6" class="lego-line" /><rect x="13.3" y="-5.6" width="0.6" height="4" rx="0.15" class="lego2" /><rect x="-11.9" y="-5.2" width="23.8" height="3.2" rx="0.3" class="paperroll" /><rect x="-11.9" y="-6.6" width="23.8" height="1.4" rx="0.1" class="flapv2" /><rect x="-11.9" y="-2" width="23.8" height="1.4" rx="0.1" class="flapv2" /><line x1="-8.9" y1="-1.85" x2="-8.9" y2="-0.6" class="slit" /><line x1="-8.9" y1="-6.6" x2="-8.9" y2="-5.35" class="slit" /><line x1="-5.9" y1="-1.85" x2="-5.9" y2="-0.6" class="slit" /><line x1="-5.9" y1="-6.6" x2="-5.9" y2="-5.35" class="slit" /><line x1="-2.9" y1="-1.85" x2="-2.9" y2="-0.6" class="slit" /><line x1="-2.9" y1="-6.6" x2="-2.9" y2="-5.35" class="slit" /><line x1="0.1" y1="-1.85" x2="0.1" y2="-0.6" class="slit" /><line x1="0.1" y1="-6.6" x2="0.1" y2="-5.35" class="slit" /><line x1="3.1" y1="-1.85" x2="3.1" y2="-0.6" class="slit" /><line x1="3.1" y1="-6.6" x2="3.1" y2="-5.35" class="slit" /><line x1="6.1" y1="-1.85" x2="6.1" y2="-0.6" class="slit" /><line x1="6.1" y1="-6.6" x2="6.1" y2="-5.35" class="slit" /><line x1="9.1" y1="-1.85" x2="9.1" y2="-0.6" class="slit" /><line x1="9.1" y1="-6.6" x2="9.1" y2="-5.35" class="slit" /><rect x="-11.9" y="-0.14" width="23.8" height="0.14" rx="0" class="guide-f" /><rect x="-12" y="2" width="24" height="0.5" rx="0" class="hit" /><text x="0" y="3.6" font-size="0.75" text-anchor="middle" class="t tb" >flaps across the full 24 cm</text><text x="-12.4" y="-9" font-size="0.75" text-anchor="start" class="t tm" >supported both ends</text><text x="13.9" y="-9" font-size="0.75" text-anchor="middle" class="t tm" >drive</text><circle cx="-11.2" cy="-0.7" r="0.7" class="pom pk" /><circle cx="-11.41" cy="-0.91" r="0.21" class="pom-hi" /><circle cx="-7.6" cy="-0.7" r="0.7" class="pom pk" /><circle cx="-7.81" cy="-0.91" r="0.21" class="pom-hi" /><circle cx="-4.2" cy="-0.7" r="0.7" class="pom pk" /><circle cx="-4.41" cy="-0.91" r="0.21" class="pom-hi" /><circle cx="-0.6" cy="-0.7" r="0.7" class="pom pk" /><circle cx="-0.81" cy="-0.91" r="0.21" class="pom-hi" /><circle cx="3.1" cy="-0.7" r="0.7" class="pom pk" /><circle cx="2.89" cy="-0.91" r="0.21" class="pom-hi" /><circle cx="6.9" cy="-0.7" r="0.7" class="pom pk" /><circle cx="6.69" cy="-0.91" r="0.21" class="pom-hi" /><circle cx="10.6" cy="-0.7" r="0.7" class="pom pk" /><circle cx="10.39" cy="-0.91" r="0.21" class="pom-hi" /></svg></div><figcaption>Roller v2. An axle runs through the whole hub into card side plates at both ends. Slit flaps cover the full width, so every pom-pom gets hit about 20 times a second.</figcaption></figure>
+      </div>
+
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>What I see in the photos</th><th>Why it misses</th><th>Change</th></tr></thead>
+          <tbody>
+            <tr><td>Tube driven by the 40-tooth gear at one end, the other end free and torn</td><td>The tube flexes and wobbles, so the flap-to-ramp gap is different on every turn and along the width</td><td>Axle through the full length, bearings in side plates at both ends</td></tr>
+            <tr><td>Flaps only on the middle ~10 cm, uneven spacing, some taped down flat</td><td>Most of the width has no flap at all, and the rest gets hit irregularly</td><td>8 evenly spaced rows across the full width</td></tr>
+            <tr><td>Flaps are long (~6 cm), stiff blue card</td><td>A 1–2 g pom-pom gets batted forward or sideways instead of being pinched and dragged</td><td>Short (1.4 cm free), springy laminated-paper tips, slit every 3 cm. Your taped paper strips are the right material.</td></tr>
+            <tr><td>Ramp and hood are a separate tall card arch, not attached to the roller</td><td>Uncontrolled gap, and a single roller can't push a pom-pom up a tall ramp anyway</td><td>A short guide that follows the flap tips at 6 mm, built off the same side plates as the axle</td></tr>
+            <tr><td>Ragged paper edge at the front</td><td>Pom-poms snag on the edge or slide under it</td><td>A clean, straight, tape-laminated skirt lying flat on the floor</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="note"><div class="label">The key change: split the job</div><p>Don't ask the roller to lift pom-poms 7 cm into a hopper. Like a carpet sweeper, it only needs to move each one about 1.5 cm up and back into a low tray, guided the whole way. The big lift happens once, at the drop point, with a separate slow motion: the tray goes on an arm (the P2-C arm idea).</p></div>
+
+      <figure><div class="svgbox"><svg class="fig-svg" viewBox="-11 -8.4 29.4 11.6" style="min-width:560px" role="img" aria-label="Roller v2 side view: rotor over a curved guide with a 6 mm gap, skirt on the floor, hood, and a low catch tray; numbered pom-pom path" xmlns="http://www.w3.org/2000/svg"><line x1="-11" y1="0" x2="16.5" y2="0" class="floorline" /><rect x="-8.5" y="-6" width="12" height="4.6" rx="0.8" class="lego" /><rect x="-10.5" y="-7" width="15.5" height="1" rx="0.2" class="lego2" /><circle cx="0" cy="-2.15" r="2.15" class="tyre" /><circle cx="0" cy="-2.15" r="1.35" class="hub" /><circle cx="0" cy="-2.15" r="0.35" class="lego2" /><rect x="-10" y="-2.4" width="1.6" height="1.4" rx="0.2" class="lego2" /><circle cx="-9.2" cy="-0.6" r="0.6" class="caster" /><rect x="-4.4" y="-1.15" width="1.5" height="0.8" rx="0.15" class="csens" /><text x="-3.65" y="1" font-size="0.42" text-anchor="middle" class="t tm" >line sensors behind the axle</text><polyline points="5.84,-1.29 5.84,-0.35 2.7,-0.35 2.7,-5.2" class="card hop" /><line x1="2.7" y1="-5.2" x2="4.94" y2="-4.93" class="hood" /><path d="M 8.6 -0 A 3.6 3.6 0 0 1 5.84 -1.29" class="guide" /><line x1="8.6" y1="-0.06" x2="10.6" y2="-0.06" class="skirt" /><path d="M 4.94 -4.93 A 3.9 3.9 0 0 1 11.79 -5.84" class="hood" /><circle cx="8.6" cy="-3.6" r="3" class="tipzone" /><circle cx="8.6" cy="-3.6" r="1.6" class="paperroll" /><polyline points="10.17,-3.93 10.9,-4.09 11.4,-4.68" class="flap2" /><polyline points="9.47,-4.94 9.88,-5.57 9.82,-6.34" class="flap2" /><polyline points="8.27,-5.17 8.11,-5.9 7.52,-6.4" class="flap2" /><polyline points="7.26,-4.47 6.63,-4.88 5.86,-4.82" class="flap2" /><polyline points="7.03,-3.27 6.3,-3.11 5.8,-2.52" class="flap2" /><polyline points="7.73,-2.26 7.32,-1.63 7.38,-0.86" class="flap2" /><polyline points="8.93,-2.03 9.09,-1.3 9.68,-0.8" class="flap2" /><polyline points="9.94,-2.73 10.57,-2.32 11.34,-2.38" class="flap2" /><circle cx="8.6" cy="-3.6" r="0.32" class="lego2" /><path d="M 5.99 -7.33 A 4.55 4.55 0 0 1 10.88 -7.54" class="rot" /><polygon points="10.99,-7.47 10.54,-7.51 10.74,-7.85" class="mkf" /><circle cx="13.3" cy="-0.7" r="0.7" class="pom pk" /><circle cx="13.09" cy="-0.91" r="0.21" class="pom-hi" /><circle cx="13.3" cy="-2" r="0.36" class="tagc" /><text x="13.3" y="-1.85" font-size="0.42" text-anchor="middle" class="t tagt" >1</text><circle cx="10.25" cy="-0.62" r="0.62" class="pom pk" /><circle cx="10.06" cy="-0.81" r="0.19" class="pom-hi" /><circle cx="10.9" cy="-2.25" r="0.36" class="tagc" /><text x="10.9" y="-2.1" font-size="0.42" text-anchor="middle" class="t tagt" >2</text><circle cx="7.41" cy="-0.79" r="0.55" class="pom pk" /><circle cx="7.24" cy="-0.96" r="0.17" class="pom-hi" /><circle cx="6.7" cy="1" r="0.36" class="tagc" /><text x="6.7" y="1.15" font-size="0.42" text-anchor="middle" class="t tagt" >3</text><circle cx="4.9" cy="-2.75" r="0.65" class="pom pk" /><circle cx="4.71" cy="-2.94" r="0.2" class="pom-hi" /><circle cx="4.9" cy="-4" r="0.36" class="tagc" /><text x="4.9" y="-3.85" font-size="0.42" text-anchor="middle" class="t tagt" >4</text><circle cx="3.5" cy="-1.05" r="0.68" class="pom pk" /><circle cx="3.3" cy="-1.25" r="0.2" class="pom-hi" /><circle cx="4.85" cy="-1" r="0.64" class="pom pk" /><circle cx="4.66" cy="-1.19" r="0.19" class="pom-hi" /><text x="12.4" y="-6.2" font-size="0.42" text-anchor="start" class="t tb" >hood</text><text x="12.4" y="-4.7" font-size="0.42" text-anchor="start" class="t tb" >flexible tips, 8 rows</text><text x="12.4" y="-4.15" font-size="0.42" text-anchor="start" class="t tm" >laminated paper</text><text x="10.6" y="0.95" font-size="0.42" text-anchor="start" class="t tm" >skirt flat on the floor</text><text x="7.6" y="1.75" font-size="0.42" text-anchor="start" class="t tm" >guide follows the tips, 6 mm gap</text><text x="4.2" y="1" font-size="0.42" text-anchor="middle" class="t tb" >catch tray</text><line x1="0" y1="2.55" x2="11.6" y2="2.55" class="dim" /><line x1="0" y1="2.3" x2="0" y2="2.8" class="dim" /><line x1="11.6" y1="2.3" x2="11.6" y2="2.8" class="dim" /><text x="5.8" y="2.36" font-size="0.42" text-anchor="middle" class="t dimt" >front reach 11.6 cm</text><line x1="15.4" y1="0" x2="15.4" y2="-3.6" class="dim" /><line x1="15.1" y1="0" x2="15.7" y2="0" class="dim" /><line x1="15.1" y1="-3.6" x2="15.7" y2="-3.6" class="dim" /><line x1="8.6" y1="-3.6" x2="15.4" y2="-3.6" class="axle" /><text x="15.65" y="-1.6" font-size="0.42" text-anchor="start" class="t dimt" >3.6</text></svg></div><figcaption>Roller v2 side view, to scale. ① Pom-pom ahead of the robot. ② A flap coming down the front presses it onto the skirt. ③ It gets dragged along the guide, squeezed from ~14 mm into the 6 mm gap, so it can't escape. ④ It's released up and back into the tray. The hood stops anything being thrown forward.</figcaption></figure>
+
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>Setting</th><th class="num">Start at</th><th class="num">Try</th><th>Why</th></tr></thead>
+          <tbody>
+            <tr><td>Gap, flap tip to guide</td><td class="num">6 mm</td><td class="num">4–8 mm</td><td>About 40% of the pom-pom diameter, so it gets pinched. A LEGO beam is 7.2 mm thick, which makes a handy feeler gauge.</td></tr>
+            <tr><td>Guide radius / axle height</td><td class="num">3.6 cm</td><td class="num">—</td><td>The guide touches the floor right under the axle</td></tr>
+            <tr><td>Hub radius / flap free length</td><td class="num">1.6 / 1.4 cm</td><td class="num">±0.3 cm</td><td>Tip radius 3.0 cm. Roll the hub tighter than your tube (about 3 cm across).</td></tr>
+            <tr><td>Rotor speed</td><td class="num">150 rpm</td><td class="num">100–220</td><td>NXT motor at 1:1 is fine. Too fast throws pom-poms, too slow lets them pile up.</td></tr>
+            <tr><td>Robot speed while sweeping</td><td class="num">3 cm/s</td><td class="num">2–5 cm/s</td><td>About 110 dps on your wheels</td></tr>
+            <tr><td>Guide end / tray front wall</td><td class="num">220°</td><td class="num">210–230°</td><td>The release point is about 1.3 cm above the floor, moving up and back</td></tr>
+            <tr><td>Tray inside size</td><td class="num">22 × 3 × 4 cm</td><td class="num">—</td><td>About 190 cm³. Fifty 1.4 cm pom-poms take about 130 cm³ loose.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <figure><div class="svgbox"><svg class="fig-svg" viewBox="0 -0.1 27.5 6.2" style="min-width:560px" role="img" aria-label="Flap strip template and end view of how the flaps sit on the hub" xmlns="http://www.w3.org/2000/svg"><rect x="0.5" y="0.8" width="12" height="2.4" rx="0.05" class="flapstrip" /><line x1="0.5" y1="1.8" x2="12.5" y2="1.8" class="fold" /><line x1="3.5" y1="1.95" x2="3.5" y2="3.2" class="slitd" /><line x1="6.5" y1="1.95" x2="6.5" y2="3.2" class="slitd" /><line x1="9.5" y1="1.95" x2="9.5" y2="3.2" class="slitd" /><text x="0.5" y="0.5" font-size="0.55" text-anchor="start" class="t tb" >paper strip laminated with clear tape, 2.4 cm × 23 cm (make 8)</text><text x="12.9" y="1.45" font-size="0.55" text-anchor="start" class="t tm" >1.0 cm tab, taped to hub</text><text x="12.9" y="2.75" font-size="0.55" text-anchor="start" class="t tm" >1.4 cm free, slit every 3 cm</text><circle cx="23.6" cy="2.3" r="1.6" class="paperroll" /><circle cx="23.6" cy="2.3" r="0.3" class="lego2" /><polyline points="25.45,1.91 25.1,2.85 25.91,2.98 26.57,2.9" class="flap2" /><polyline points="23.99,4.15 23.05,3.8 22.92,4.61 23,5.27" class="flap2" /><polyline points="21.75,2.69 22.1,1.75 21.29,1.62 20.63,1.7" class="flap2" /><polyline points="23.21,0.45 24.15,0.8 24.28,-0.01 24.2,-0.67" class="flap2" /><text x="23.6" y="5.7" font-size="0.55" text-anchor="middle" class="t tm" >end view: tab on hub, tip trails</text></svg></div><figcaption>Flaps: fold a 1 cm tab and tape it flat to the hub along its length. The free 1.4 cm trails slightly. The slits let each 3 cm segment flex on its own, like bristles.</figcaption></figure>
+
+      <div class="cols">
+        <div class="d-text">
+          <h3>Build it in this order</h3>
+          <ol class="steps">
+            <li><div><b>Cut two side plates</b> from corrugated cardboard using the full-size template. Push a LEGO beam through each at the axle mark, or glue a beam on, so the axle runs in a LEGO hole instead of in cardboard.</div></li>
+            <li><div><b>Make the hub:</b> roll cardstock tightly around a long axle to ~3 cm across, with card or LEGO plugs at each end so it can't slip. Tape it hard. It must be straight and round.</div></li>
+            <li><div><b>Tape on 8 flap strips</b> evenly (every 45°), full length, tabs pointing the same way. Slit the free edge every 3 cm.</div></li>
+            <li><div><b>Bend the guide:</b> a 23 × 4 cm cardstock strip, glued to the arc line on both side plates so it follows the tips. Tape the skirt to its front edge, flat on the table.</div></li>
+            <li><div><b>Check the gap by hand:</b> spin the rotor and slide a LEGO beam between tips and guide at the left, middle and right. It should just brush everywhere.</div></li>
+            <li><div><b>Add the hood and tray</b>, then mount the drive gear outside one side plate.</div></li>
+          </ol>
+        </div>
+        <div class="d-text">
+          <h3>Bench test before mounting</h3>
+          <p>Hold the module and slide it along a ruler at ~3 cm/s (about 10 cm every 3 seconds) with the rotor running. Lay 20 pom-poms across its path: 4 at each end within 1 cm of the side plates, the rest spread out, including two touching pairs.</p>
+          <p>Record each one as <b>caught</b>, <b>pushed</b>, <b>thrown</b> or <b>jammed</b>. Change one setting at a time: gap first, then speed, then flap stiffness. Aim for 19 of 20 caught three runs in a row before you put it on the robot.</p>
+          <div class="note warn"><div class="label">Black pom-poms</div><p>They read exactly like grid lines. With the tray in front of the wheels, move the line sensors behind the axle. Your snapping code works unchanged with a negative <code>SENSOR_OFFSET</code> (about −5 cm).</p></div>
+        </div>
+      </div>
+
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>Symptom on the bench</th><th>Likely cause</th><th>Fix</th></tr></thead>
+          <tbody>
+            <tr><td>Pushed ahead, never goes under</td><td>Skirt edge lifted, or tips too high</td><td>Tape the skirt flat, shrink the gap, add 2 mm to the flaps</td></tr>
+            <tr><td>Thrown forward or sideways</td><td>Flaps too stiff or too fast, hood missing</td><td>Softer tips, 100–150 rpm, close the hood down to ~35°</td></tr>
+            <tr><td>Jams and stalls the rotor</td><td>Gap too small at one spot (hub not round, guide kinked)</td><td>Re-check with the beam gauge, re-bend the guide</td></tr>
+            <tr><td>Carried round, then dropped back out the front</td><td>Guide too long, or tray wall too low</td><td>End the guide at ~220°, raise the tray's back wall, add the lid</td></tr>
+            <tr><td>Fine in the middle, misses at the ends</td><td>Flaps or guide stop short of the side plates</td><td>Run both to within 2 mm of the plates</td></tr>
+            <tr><td>Different every run</td><td>Rotor wobble</td><td>Axle through the full hub, both bearings snug</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="cols">
+        <div class="note"><div class="label">Emptying the tray (recommended)</div><p>Mount the tray on the NXT arm from P2-C instead of fixing it to the frame. At the drop point, the arm swings it up and over and tips the pom-poms out behind the robot, which then drives forward and away. Nothing rolls over the pile.</p></div>
+        <div class="note"><div class="label">Emptying the tray (alternative)</div><p>Give the tray a gate at one end and tilt it sideways with the medium motor, pouring out beside the robot. Simpler linkage, but the drop lands about 15 cm to one side of the robot centre, so plan the approach for that.</p></div>
+        <div class="note"><div class="label">Footprint check</div><p>v2 is 24 cm wide with a front reach of 11.6 cm. With 5 cm chamfers, the checker gives 3.0 cm each side on straights, 2.1 cm at corners and 1.3 cm spinning in place.</p></div>
+      </div>
+      <p class="legend">The full-size side plate and flap template is the PDF sent in the chat. Print it at 100% and check the 10 cm bar.</p>
+    </section>
+
+    <section id="software">
+      <div class="sec-head"><div class="label">06 · Software</div><h2>Exploring, saving, replaying</h2>
+        <p>Three ways to explore, one map format, a phase 2 mission built on that map, and a program structure that holds it together.</p></div>
+
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>Exploration strategy</th><th>How it works</th><th>Strength</th><th>Weakness</th></tr></thead>
+          <tbody>
+            <tr><td><b>Tile-by-tile explorer</b> (recommended)</td><td>Drive tile centre to tile centre. At each centre, scan L/F/R, record, pick the next move.</td><td>Discrete, testable on a laptop, reuses lab 3 line correction directly. The map is exact by construction.</td><td>Stops every tile, so it's slower.</td></tr>
+            <tr><td>Continuous wall follower</td><td>Hold a fixed distance to the left house. Log pose at every line crossing, then turn the log into tiles afterward.</td><td>Fast, smooth, and gives lateral position too.</td><td>Corners and openings are tuning work. The map is reconstructed, not measured.</td></tr>
+            <tr><td>Tactile probing</td><td>Bump forward. When blocked, back off, turn, try again (phase 1 only).</td><td>Immune to sonar noise.</td><td>Slow, and every bump costs pose accuracy.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="cols">
+        <figure><figcaption><b>Phase 1 explorer</b></figcaption>
+<pre class="mermaid">
+flowchart TD
+  A([Start at origin]) --> B[Drive to the tile outside the S1–S2 edge using lab 3 safest path]
+  B --> C[Face the street, step into the first tile]
+  C --> D[At tile centre: scan left, front, right]
+  D --> E[Record walls for this tile]
+  E --> F{Houses on neither side?}
+  F -- yes --> G[Street ended: save street_map.json]
+  F -- no --> H{Front open?}
+  H -- yes --> M[Move one tile, snap on the line]
+  H -- no --> J{One side open?}
+  J -- yes --> K[Turn 90° toward it, gyro] --> M
+  J -- no --> L[Dead end: U-turn, backtrack]
+  L --> M
+  M --> D
+</pre></figure>
+        <figure><figcaption><b>Phase 2 mission</b></figcaption>
+<pre class="mermaid">
+flowchart TD
+  P([Load street_map.json]) --> Q[Compile route into runs and turns]
+  Q --> R[Drive to the entry, start roller]
+  R --> S{Next step}
+  S -- run --> T[Drive the centreline and snap on each line]
+  S -- corner --> U[Stop at the pre-turn point, turn 90° with gyro]
+  T --> S
+  U --> S
+  S -- end --> V[Leave the street, plan to the drop point]
+  V --> W[Line up, reverse in, tilt hopper, shake]
+  W --> X([Roller off, done])
+</pre></figure>
+      </div>
+
+      <div class="cols">
+        <div class="d-text">
+          <h3>Coordinates and the entry</h3>
+          <p>Keep the lab 2 and 3 convention: θ = 0 is +y and 90 is +x, with distances in cm. Tiles are named by their lower-left intersection, so tile (i, j) has its centre at ((i + ½)·T, (j + ½)·T). S1 and S2 are adjacent intersections. The two tiles sharing that edge are the candidates for the first street tile, and the street is the one with houses on both sides. Check both with one scan before committing.</p>
+<pre><code>TILE = 30.48                    # 30.0 if the course tiles are 30 cm
+HEAD = {"N": 0.0, "E": 90.0, "S": 180.0, "W": 270.0}
+STEP = {"N": (0, 1), "E": (1, 0), "S": (0, -1), "W": (-1, 0)}
+LEFT = {"N": "W", "W": "S", "S": "E", "E": "N"}
+RIGHT = {v: k for k, v in LEFT.items()}
+
+def tile_centre(i, j):
+    return ((i + 0.5) * TILE, (j + 0.5) * TILE)
+
+def entry_candidates(s1, s2):
+    (x1, y1), (x2, y2) = sorted([s1, s2])
+    if y1 == y2:                         # horizontal edge
+        return (x1, y1), (x1, y1 - 1)    # tile above, tile below
+    return (x1, y1), (x1 - 1, y1)        # tile right, tile left</code></pre>
+        </div>
+        <div class="d-text">
+          <h3>The map file</h3>
+          <p>Write it to the Pi's SD card at the end of phase 1. It survives a power cycle and a hardware swap. Phase 2 needs only the ordered tile list. Walls are kept for debugging and for planning to the drop point.</p>
+<pre><code>{
+  "tile_cm": 30.48,
+  "s1": [1, 1], "s2": [2, 1],
+  "tiles": [[1,1],[1,2],[1,3],[2,3],[3,3],
+            [4,3],[5,3],[5,2],[5,1]],
+  "moves": "NNEEEESS",
+  "walls": {"1,3": "NW", "5,3": "NE", "...": "..."},
+  "exit": [5, 0],
+  "drop": [8, 1]
+}</code></pre>
+          <p>For two joined tables, the tile dictionary simply grows. Nothing assumes a 5 × 9 board. Watch the seam between the tables, which can read as a false line. Gate line detection by distance (see below) and it gets ignored.</p>
+        </div>
+      </div>
+
+      <h3>Program structure</h3>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>Option</th><th>Shape</th><th>Fit for this project</th></tr></thead>
+          <tbody>
+            <tr><td>Blocking procedures (lab 3 today)</td><td>Each move is a function with its own <code>while</code> loop that calls <code>update_odometer()</code></td><td>Fine for phase 1. In phase 2 you also need to watch the roller for stalls and the clock while driving, and every loop would need that code copied in.</td></tr>
+            <tr><td><b>One tick loop + state machine</b> (recommended)</td><td>A 50 Hz loop reads every sensor once, updates odometry, then calls <code>state.step()</code>. States return the next state.</td><td>One place for timeouts, logging, jam detection and the emergency stop. Never two threads talking to the BrickPi at once.</td></tr>
+            <tr><td>Threads</td><td>Odometry thread plus mission thread, sharing pose under a lock</td><td>Works, but all BrickPi SPI calls must go through one lock. Bugs show up as rare glitches.</td></tr>
+          </tbody>
+        </table>
+      </div>
+<pre class="mermaid">
+flowchart LR
+  cfg[config.py: ports, constants, PHASE] --> hw[hardware.py: motor and sensor objects]
+  hw --> loop[runner.py: 50 Hz tick]
+  loop --> odo[odometry.py: encoders and gyro]
+  loop --> line[lines.py: gated detection and snap]
+  loop --> st[states: Explore, Sweep, GoTo, Dump]
+  st --> motion[motion.py: drive, turn, hold heading]
+  st --> scan[scan.py: sonar median, wall test]
+  st --> grid[grid.py and street_map.py: tiles, JSON, BFS]
+  st --> tool[tools.py: turret, roller, hopper]
+</pre>
+
+      <div class="cols">
+        <div class="d-text">
+          <h4>Tick loop skeleton</h4>
+<pre><code>class State:
+    def step(self, r):  # r = robot snapshot for this tick
+        return self      # or the next State
+
+def run(first_state, hz=50):
+    state, period = first_state, 1.0 / hz
+    while state is not None:
+        t0 = time.time()
+        r = robot.read_all()        # encoders, colour, gyro, sonar
+        odom.update(r)
+        lines.update(r, odom)       # may snap x/y/theta
+        state = state.step(r)
+        log.write(r, odom, state)   # CSV, one row per tick
+        time.sleep(max(0, period - (time.time() - t0)))
+    robot.stop()</code></pre>
+        </div>
+        <div class="d-text">
+          <h4>Wall scan with your filters module</h4>
+<pre><code>from utils.filters import MedianWindow
+WALL_CM = 28        # wall reads ~10–12 at tile centre
+
+def read_cm(us, n=5):
+    w = MedianWindow(n)
+    for _ in range(n):
+        v = us.get_cm()
+        if v is not None and v > 0:
+            w.append(v)
+        time.sleep(0.05)
+    return w.get_value() or 255
+
+def scan(turret, us):
+    walls = {}
+    for side, ang in (("L", -90), ("F", 0), ("R", 90)):
+        turret.aim(ang)
+        walls[side] = read_cm(us) &lt; WALL_CM
+    turret.aim(0)
+    return walls</code></pre>
+        </div>
+      </div>
+
+      <details>
+        <summary>Carry-overs from the lab 3 code to fix before building on it</summary>
+        <div>
+          <ul class="plain">
+            <li><b><code>get_red() or 100</code> hides a real zero.</b> In Python <code>0 or 100</code> is 100, so a reading of exactly 0 on a very dark line counts as "no line". Use <code>v if v is not None else 100</code>.</li>
+            <li><b>The ignore window is counted in loop iterations.</b> <code>IGNORE_RED_CTR_START = 100</code> lasts a different distance at every speed. Gate by distance instead: only accept a line when odometry says one is within about ±5 cm.</li>
+            <li><b><code>align_on_line</code> can spin forever.</b> If one sensor never sees the line (a pom-pom on it, or a seam), the crawl loop has no exit. Add a distance or time limit, and fall back to a single-sensor snap.</li>
+            <li><b><code>update_odometer</code> reads both colour sensors and prints on every call.</b> That is two extra SPI reads and a console write about 100 times a second. Print at 5 Hz, and read the sensors once per tick.</li>
+            <li><b>Straight driving is open loop.</b> Equal wheel speeds drift. Add a P term on heading error (gyro or odometry) between lines. In a 30 cm street, lateral drift is what touches houses.</li>
+            <li><b>State is global.</b> Move pose into an <code>Odometer</code> object so phase 1 and phase 2 programs share one tested module.</li>
+          </ul>
+<pre><code>def line_expected(pos_along, tile=TILE, window=5.0):
+    """True when the sensor is within `window` cm of a grid line."""
+    d = pos_along % tile
+    return d &lt; window or d &gt; tile - window
+
+def is_dark(v, thr=LINE_THRESHOLD):
+    return v is not None and v &lt; thr</code></pre>
+        </div>
+      </details>
+
+      <div class="cols">
+        <div class="note"><div class="label">Coverage strategy</div><p>Default to one centred pass. If misses near the houses cost points, run the street twice in lanes offset by ±1.5 cm (out and back, turning at the open exit), or add P2-D. With the bucket loader, coverage happens one tile at a time anyway.</p></div>
+        <div class="note"><div class="label">Getting to the drop point</div><p>Breadth-first search on the tile grid, blocking every known house and street tile, then reuse your lab 3 safest-path moves along the result. Arrive backward for the tilt hopper, with the final line snap taken just before it.</p></div>
+        <div class="note"><div class="label">Testing without the robot</div><p><code>utils/dummy.py</code> already fakes the brick. Add a <code>FakeStreet</code> from an ASCII map that answers <code>scan()</code>, and run the explorer on a laptop against ten street shapes. For the real robot, cardboard boxes make a 30 cm street mock-up.</p></div>
+      </div>
+    </section>
+
+    <section id="plan">
+      <div class="sec-head"><div class="label">07 · Build order</div><h2>A sequence that de-risks early</h2></div>
+      <ol class="steps">
+        <li><div><b>Refactor lab 3 into modules and fix the carry-overs.</b> Add gyro turns and heading hold. Rerun the lab 3 demo to confirm nothing regressed.</div></li>
+        <li><div><b>Write the explorer against a fake street on a laptop</b>, then on the robot with spin-scan (P1-B) in a cardboard-box street. Save and reload the JSON.</div></li>
+        <li><div><b>Measure the real pom-poms and the real robot</b>, and put the numbers into the checker. Cut a 1:1 card template of the intake footprint and push it through a box corner by hand.</div></li>
+        <li><div><b>Build the turret (P1-A)</b> and swap it in. The explorer code doesn't change, only <code>scan()</code>.</div></li>
+        <li><div><b>Prototype the roller on the bench</b> before mounting it. A tube, flaps and a ramp held by hand over 20 pom-poms tells you the lip height and roller speed in ten minutes.</div></li>
+        <li><div><b>Mount intake and hopper</b>, then tune the corner pre-turn stop on a real corner. Add dumping and drop-point navigation.</div></li>
+        <li><div><b>Full runs, counted.</b> Log pom-poms collected, contacts and time per run, and change one thing at a time.</div></li>
+      </ol>
+    </section>
+
+    <section id="questions">
+      <div class="sec-head"><div class="label">08 · Ask the prof</div><h2>Questions that change the design</h2></div>
+      <ol class="qs">
+        <li>Can the street branch or dead-end, and what is its longest length?</li>
+        <li>Where does the robot start in each phase, and is its starting pose known?</li>
+        <li>May the phase 1 map be saved to a file and loaded in phase 2?</li>
+        <li>Do S1 and S2 imply which side of their edge the street is on?</li>
+        <li>Where are pom-poms placed: anywhere, away from houses, ever on grid lines? What size range?</li>
+        <li>Does pushing pom-poms a few centimetres while collecting count as dragging? (This decides P2-C.)</li>
+        <li>Is the drop location a point or a zone, with what tolerance? May the robot dump from a height, or in several trips?</li>
+        <li>Does the street end open onto the board? Can the robot leave the street there?</li>
+        <li>Is a light graze of a house a penalty or a fail? Is there a time limit?</li>
+        <li>Besides paper, cardboard and tape, are rubber bands, string or velcro allowed?</li>
+      </ol>
+    </section>
+
+    <section id="sources">
+      <div class="sec-head"><div class="label">09 · Sources</div><h2>Sources</h2></div>
+      <ul class="plain src">
+        <li>Your files: ECSE 211 F26 Lab 2, 3 and 4 handouts; <code>lab3_navigation.py</code> and the <code>utils</code> library (brick, filters, remote); DPM kit and EV3 component checklists; robot and pom-pom photos.</li>
+        <li><a href="https://robolab.inf.tu-dresden.de/en/knowledge/hardware/motors" target="_blank" rel="noopener">TU Dresden Robolab: EV3 motor speeds and torques</a></li>
+        <li><a href="https://www.eurobricks.com/forum/forums/topic/87670-ev3-large-and-medium-motors-comparison" target="_blank" rel="noopener">Eurobricks: EV3 large vs medium motor comparison (NXT stall torque)</a></li>
+        <li><a href="https://www.mathworks.com/help/simulink/supportpkg/legomindstormsev3_ref/ultrasonicsensor.html" target="_blank" rel="noopener">MathWorks: EV3 ultrasonic sensor range and behaviour</a></li>
+        <li><a href="https://brickset.com/inventories/45544-1" target="_blank" rel="noopener">Brickset: EV3 Core Set 45544 inventory</a></li>
+        <li><a href="https://plc.pd.vex.com/t/choosing-the-right-v5-intake-mechanism/1093" target="_blank" rel="noopener">VEX: choosing an intake mechanism (horizontal, vertical, continuous rollers)</a></li>
+        <li><a href="https://www.quill.com/S-S-1-lbs-Assorted-Size-and-Colors-Pom-Poms/cbs/50186018.html" target="_blank" rel="noopener">Quill: 1 lb assorted pom-poms, about 200–250 pieces (weight estimate)</a></li>
+      </ul>
+    </section>
+  </main>
+</div>
+
+<script>
+// Footprint / turn-clearance model for a differential-drive robot in a 1-tile street.
+// Robot frame: a = lateral (+ right), f = forward (+ ahead of the wheel axle), cm.
+// World frame for the corner test: corner tile is [-H,H]^2, robot arrives heading +y (north)
+// from the tile below and leaves heading +x (east). Houses: west of x=-H, north of y=H,
+// and the inner-corner house at x>H, y<-H.
+function robotPoly(p) {
+  const hb = p.bw / 2, hi = p.iw / 2;
+  const fs = Math.max(-p.rear + 0.5, p.lip - p.depth);
+  const ch = Math.max(0, Math.min(p.ch, hi, p.lip - fs));
+  return [[-hb, -p.rear], [hb, -p.rear], [hb, fs], [hi, fs], [hi, p.lip - ch], [hi - ch, p.lip],
+          [-hi + ch, p.lip], [-hi, p.lip - ch], [-hi, fs], [-hb, fs]];
+}
+function samplePoly(poly, step) {
+  const pts = [];
+  for (let k = 0; k < poly.length; k++) {
+    const [a0, f0] = poly[k], [a1, f1] = poly[(k + 1) % poly.length];
+    const n = Math.max(1, Math.ceil(Math.hypot(a1 - a0, f1 - f0) / step));
+    for (let t = 0; t < n; t++) pts.push([a0 + (a1 - a0) * t / n, f0 + (f1 - f0) * t / n]);
+  }
+  return pts;
+}
+function cornerClear(x, y, H) {
+  const north = H - y, west = x + H;
+  let inner;
+  if (x >= H && y <= -H) inner = -Math.min(x - H, -H - y);
+  else inner = Math.hypot(Math.max(H - x, 0), Math.max(y + H, 0));
+  return Math.min(north, west, inner);
+}
+function deadEndClear(x, y, H) { return Math.min(H - x, x + H, H - y); }
+function rotated(pts, degFrom, degTo, stepDeg) {
+  // heading north at 0, clockwise positive: world = (a cos + f sin, -a sin + f cos)
+  const out = [];
+  for (let d = degFrom; d <= degTo + 1e-9; d += stepDeg) {
+    const r = d * Math.PI / 180, c = Math.cos(r), s = Math.sin(r);
+    for (const [a, f] of pts) out.push(a * c + f * s, -a * s + f * c);
+  }
+  return out;
+}
+function analyse(p) {
+  const H = p.W / 2;
+  const poly = robotPoly(p);
+  const pts = samplePoly(poly, 0.5);
+  const hw = Math.max(...poly.map(q => Math.abs(q[0])));
+  const R = Math.max(...pts.map(q => Math.hypot(q[0], q[1])));
+  const rot90 = rotated(pts, 0, 90, 3);
+  const turnMargin = (cx, cy) => {
+    let m = Infinity;
+    for (let k = 0; k < rot90.length; k += 2) {
+      const c = cornerClear(cx + rot90[k], cy + rot90[k + 1], H);
+      if (c < m) m = c;
+    }
+    return m;
+  };
+  const total = (cx, cy) => Math.min(H - Math.abs(cx) - hw, H - Math.abs(cy) - hw, turnMargin(cx, cy));
+  let best = { m: -Infinity, cx: 0, cy: 0 };
+  for (let cx = -5; cx <= 5.001; cx += 0.5)
+    for (let cy = -6; cy <= 4.001; cy += 0.5) {
+      const m = total(cx, cy);
+      if (m > best.m) best = { m, cx, cy };
+    }
+  const b0 = { ...best };
+  for (let cx = b0.cx - 0.5; cx <= b0.cx + 0.501; cx += 0.1)
+    for (let cy = b0.cy - 0.5; cy <= b0.cy + 0.501; cy += 0.1) {
+      const m = total(cx, cy);
+      if (m > best.m) best = { m, cx, cy };
+    }
+  const centreTurn = Math.min(H - hw, turnMargin(0, 0));
+  // dead end: walls W, E, N; robot arrives heading north, spins 180 deg about (0, cy)
+  const rot180 = rotated(pts, 0, 180, 4);
+  let uturn = { m: -Infinity, cy: 0 };
+  for (let cy = -8; cy <= 2.001; cy += 0.25) {
+    let m = H - hw;
+    for (let k = 0; k < rot180.length; k += 2) {
+      const c = deadEndClear(rot180[k], cy + rot180[k + 1], H);
+      if (c < m) m = c;
+    }
+    if (m > uturn.m) uturn = { m, cy };
+  }
+  const r = 1.0; // pom-pom radius for the coverage estimate
+  const miss = Math.max(0, 2 * Math.max(0, (p.W - p.iw) / 2 - r) / (p.W - 2 * r));
+  return { H, poly, pts, hw, R, straight: H - hw, centreTurn, best, uturn, missPct: miss * 100, missOf50: miss * 50, rot90 };
+}
+
+
+(function () {
+  const PRESETS = {
+    sweeper: { W: 30, bw: 16, rear: 10, iw: 25, lip: 11, ch: 4, depth: 8, need: 1.0 },
+    lab3:    { W: 30, bw: 16, rear: 10, iw: 16, lip: 9,  ch: 1, depth: 3, need: 1.0 },
+    square:  { W: 30, bw: 16, rear: 10, iw: 26, lip: 13, ch: 0, depth: 9, need: 1.0 },
+    bucket:  { W: 30, bw: 16, rear: 10, iw: 24, lip: 15, ch: 1, depth: 10, need: 1.0 },
+  };
+  const KEYS = ["iw", "lip", "ch", "depth", "bw", "rear", "W", "need"];
+  const p = Object.assign({}, PRESETS.sweeper);
+  const $ = id => document.getElementById(id);
+  const svg = $("turnsvg"), res = $("results");
+  const NS = "http://www.w3.org/2000/svg";
+  function el(tag, attrs, parent) { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); if (parent) parent.appendChild(e); return e; }
+  function setInputs() { KEYS.forEach(k => { $("ck-" + k).value = p[k]; $("o-" + k).textContent = p[k].toFixed(k === "need" ? 2 : 1) + " cm"; }); }
+  function grade(m) { return m >= p.need ? ["ok", "clear"] : m >= 0 ? ["tight", "tight"] : ["bad", "hits house"]; }
+  function row(label, sub, val, g) {
+    const d = document.createElement("div"); d.className = "res";
+    const a = document.createElement("div"); a.textContent = label;
+    if (sub) { const s = document.createElement("span"); s.className = "sub"; s.textContent = sub; a.appendChild(s); }
+    const v = document.createElement("div"); v.className = "v"; v.textContent = val;
+    const pl = document.createElement("span"); pl.className = "pill " + g[0]; pl.textContent = g[1];
+    d.append(a, v, pl); res.appendChild(d);
+  }
+  function draw(r) {
+    const H = r.H, x0 = -H - 9, x1 = H + 26, y0 = -H - 22, y1 = H + 8;
+    svg.setAttribute("viewBox", `${x0} ${-y1} ${x1 - x0} ${y1 - y0}`);
+    svg.textContent = "";
+    const g = el("g", { transform: "scale(1,-1)" }, svg);
+    el("rect", { x: x0, y: y0, width: x1 - x0, height: y1 - y0, class: "floor" }, g);
+    el("rect", { x: x0, y: y0, width: -H - x0, height: y1 - y0, class: "house" }, g);
+    el("rect", { x: -H, y: H, width: x1 + H, height: y1 - H, class: "house" }, g);
+    el("rect", { x: H, y: y0, width: x1 - H, height: -H - y0, class: "house" }, g);
+    el("line", { x1: -H, y1: -H, x2: H, y2: -H, class: "gl" }, g);
+    el("line", { x1: H, y1: -H, x2: H, y2: H, class: "gl" }, g);
+    const { cx, cy } = r.best;
+    for (let d = 0; d <= 90; d += 10) {
+      const t = d * Math.PI / 180, c = Math.cos(t), s = Math.sin(t);
+      const pts = r.poly.map(([a, f]) => `${(cx + a * c + f * s).toFixed(2)},${(cy - a * s + f * c).toFixed(2)}`).join(" ");
+      el("polygon", { points: pts, class: "rb" + (d === 0 ? " key" : d === 90 ? " key end" : "") }, g);
+    }
+    el("circle", { cx: cx, cy: cy, r: 0.8, class: "ctr" }, g);
+    // closest approach marker
+    let best = { m: Infinity, x: 0, y: 0 };
+    for (let k = 0; k < r.rot90.length; k += 2) {
+      const x = cx + r.rot90[k], y = cy + r.rot90[k + 1];
+      const north = H - y, west = x + H;
+      let inner = (x >= H && y <= -H) ? -Math.min(x - H, -H - y) : Math.hypot(Math.max(H - x, 0), Math.max(y + H, 0));
+      const m = Math.min(north, west, inner, H - Math.abs(cx) - r.hw, H - Math.abs(cy) - r.hw);
+      if (Math.min(north, west, inner) < best.m) best = { m: Math.min(north, west, inner), x, y };
+    }
+    el("circle", { cx: best.x, cy: best.y, r: 1.6, class: "pinch" }, g);
+    const t1 = el("text", { x: -H + 1.2, y: -y0 - 2, "font-size": 2.0 }, svg); t1.textContent = "enters from below, exits right";
+    const t2 = el("text", { x: -H + 1.2, y: -H - 2, "font-size": 2.0 }, svg); t2.textContent = "houses";
+  }
+  let pending = false;
+  function update() {
+    if (pending) return; pending = true;
+    requestAnimationFrame(() => {
+      pending = false;
+      const r = analyse(p);
+      res.textContent = "";
+      row("Straight street", "space beside the widest part", r.straight.toFixed(1) + " cm", grade(r.straight));
+      const b = r.best, before = -b.cy, inward = b.cx;
+      const sub = b.m >= 0 ? `stop the axle ${before >= 0 ? before.toFixed(1) + " cm before" : (-before).toFixed(1) + " cm past"} the corner tile centre, ${Math.abs(inward).toFixed(1)} cm ${inward >= 0 ? "toward" : "away from"} the turn` : "no stopping point works: shorten, narrow or chamfer the front";
+      row("90° corner turn", sub, b.m.toFixed(1) + " cm", grade(b.m));
+      row("Spin in place in any tile", "turn radius " + r.R.toFixed(1) + " cm vs half-street " + r.H.toFixed(1) + " cm", (r.H - r.R).toFixed(1) + " cm", grade(r.H - r.R));
+      row("Centred pass misses", "2 cm pom-poms placed evenly", "≈ " + r.missOf50.toFixed(1) + " of 50", ["info", "estimate"]);
+      draw(r);
+    });
+  }
+  setInputs();
+  KEYS.forEach(k => $("ck-" + k).addEventListener("input", e => {
+    p[k] = parseFloat(e.target.value); $("o-" + k).textContent = p[k].toFixed(k === "need" ? 2 : 1) + " cm";
+    document.querySelectorAll(".presets button").forEach(b => b.setAttribute("aria-pressed", "false"));
+    update();
+  }));
+  document.querySelectorAll(".presets button").forEach(btn => btn.addEventListener("click", () => {
+    Object.assign(p, PRESETS[btn.dataset.preset]); setInputs();
+    document.querySelectorAll(".presets button").forEach(b => b.setAttribute("aria-pressed", String(b === btn)));
+    update();
+  }));
+  update();
+})();
+</script>
+
+<!--claude-mermaid-runtime-begin:3477-->
+<style>.mermaid-diagram{margin-block:4px}.mermaid-diagram svg{display:block;margin:0 auto;max-width:100%;height:auto}</style>
+<script src="/_runtime/mermaid-11.16.1.min.js"></script>
+<script>(function(){
+var CFG={"palettes":{"light":{"surface":"#f4efe4","text":"#42392e","line":"#8a7f6d","border":"#7a6c52","bg":"#fffdf8"},"dark":{"surface":"#262b34","text":"#f2f3f5","line":"#a8adb8","border":"#9aa4b8","bg":"#1f232b"}}};
+if(typeof mermaid==='undefined')return;
+var pres=Array.prototype.slice.call(document.querySelectorAll('pre.mermaid')).filter(function(p){if(p.hasAttribute('data-claude-mermaid-claimed'))return false;p.setAttribute('data-claude-mermaid-claimed','1');return true;});
+if(!pres.length)return;
+var mq=window.matchMedia?window.matchMedia('(prefers-color-scheme: dark)'):null;
+var root=document.documentElement;
+var items=pres.map(function(pre){
+var mount=document.createElement('div');mount.className='mermaid-diagram';
+return {pre:pre,mount:mount,src:pre.textContent||''};
+});
+var seq=0;
+var renderGen=0;
+var lastKey='';
+function pageBg(fallback){
+var els=[document.body,document.documentElement];
+for(var i=0;i<els.length;i++){
+var c=els[i]&&getComputedStyle(els[i]).backgroundColor;
+if(c&&c!=='transparent'&&c!=='rgba(0, 0, 0, 0)')return c;
+}
+return fallback;
+}
+function render(){
+var theme=root.getAttribute('data-theme');
+var dark=theme==='dark'||(!!(mq&&mq.matches)&&theme!=='light');
+var pal=dark?CFG.palettes.dark:CFG.palettes.light;
+var bg=pageBg(pal.bg);
+var key=(dark?'d':'l')+'|'+bg;
+if(key===lastKey)return;
+lastKey=key;
+var gen=++renderGen;
+var font=getComputedStyle(document.body).fontFamily||'sans-serif';
+var nat={useMaxWidth:false};
+mermaid.initialize({
+startOnLoad:false,securityLevel:'strict',theme:'base',
+flowchart:nat,sequence:nat,er:nat,state:nat,class:nat,pie:nat,
+gantt:nat,journey:nat,timeline:nat,gitGraph:nat,mindmap:nat,xyChart:nat,
+quadrantChart:nat,sankey:nat,c4:nat,requirement:nat,block:nat,
+packet:nat,kanban:nat,architecture:nat,radar:nat,
+themeVariables:{background:bg,mainBkg:pal.surface,primaryColor:pal.surface,
+primaryTextColor:pal.text,lineColor:pal.line,primaryBorderColor:pal.border,
+nodeBorder:pal.border,clusterBorder:pal.border,edgeLabelBackground:bg,
+clusterBkg:'rgba(127,127,127,0.07)',titleColor:pal.text,
+darkMode:dark,rowOdd:bg,rowEven:'rgba(127,127,127,0.07)',
+attributeBackgroundColorOdd:bg,attributeBackgroundColorEven:'rgba(127,127,127,0.07)',
+fontSize:'16px',fontFamily:font},
+themeCSS:'.node rect, .node circle, .node polygon, .node path, .cluster rect { stroke-width: 2px; }'
+});
+items.forEach(function(it){
+var id='claude-mermaid-'+seq++;
+mermaid.render(id,it.src).then(function(r){
+if(gen!==renderGen)return;
+var prev=it.pre.previousElementSibling;
+if(prev&&prev.className==='mermaid-diagram'&&prev!==it.mount)return;
+it.mount.innerHTML=r.svg;
+if(!it.mount.parentNode)it.pre.parentNode.insertBefore(it.mount,it.pre);
+it.pre.style.display='none';
+},function(){
+var scratch=document.getElementById(id);
+if(scratch)scratch.parentNode.removeChild(scratch);
+scratch=document.getElementById('d'+id);
+if(scratch)scratch.parentNode.removeChild(scratch);
+if(gen!==renderGen)return;
+if(it.mount.parentNode)it.mount.parentNode.removeChild(it.mount);
+it.pre.style.display='';
+});
+});
+}
+render();
+if(mq&&mq.addEventListener)mq.addEventListener('change',render);
+if(typeof MutationObserver!=='undefined')new MutationObserver(render).observe(root,{attributes:true,attributeFilter:['data-theme']});
+})();</script>
+<!--claude-mermaid-runtime-end-->
+
+</body></html>

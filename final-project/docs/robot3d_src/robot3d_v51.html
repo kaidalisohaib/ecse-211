@@ -1,0 +1,628 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Snowplow: tray between the motors (3D concept, v5.1: one roller shaft, V-angled flaps; pusher still being reworked)</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #1b1d23; color: #e5e7eb;
+               font: 13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  #bar { position: fixed; top: 0; left: 0; right: 0; display: flex; gap: 6px; align-items: center; flex-wrap: wrap;
+         padding: 8px 10px; background: rgba(20, 22, 28, .86); z-index: 5; }
+  #bar b { margin-right: 8px; }
+  #bar .grp { display: flex; gap: 4px; margin-right: 10px; align-items: center; }
+  #bar .grp span { color: #9ca3af; margin-right: 2px; }
+  button { background: #2b2f39; color: #e5e7eb; border: 1px solid #3b4150; border-radius: 6px; padding: 4px 9px;
+           font: inherit; cursor: pointer; }
+  button.on { background: #3b82f6; border-color: #3b82f6; color: #fff; }
+  #panel { position: fixed; left: 10px; bottom: 10px; width: 330px; max-height: calc(100% - 80px); overflow: auto;
+           background: rgba(20, 22, 28, .88); border: 1px solid #2f3440; border-radius: 8px; padding: 10px 12px; z-index: 4; }
+  #panel h3 { margin: 0 0 6px; font-size: 13px; }
+  #panel table { border-collapse: collapse; width: 100%; }
+  #panel td { padding: 1px 4px; vertical-align: top; }
+  #panel td:last-child { text-align: right; white-space: nowrap; color: #fde68a; }
+  #panel p { margin: 6px 0 0; color: #cbd5e1; }
+  #live { font-weight: 600; }
+  .lbl { position: fixed; transform: translate(-50%, -100%); padding: 2px 6px; border-radius: 4px; white-space: nowrap;
+         background: rgba(15, 17, 22, .82); border: 1px solid rgba(255, 255, 255, .18); font-size: 12px; pointer-events: none;
+         z-index: 3; }
+  .lbl::after { content: ""; position: absolute; left: 50%; top: 100%; width: 1px; height: 10px; background: rgba(255,255,255,.45); }
+  #load { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 15px; z-index: 9; }
+  body.noui #bar, body.noui #panel { display: none; }
+</style>
+<!--IMPORTMAP-->
+</head>
+<body>
+<div id="bar">
+  <b>Snowplow concept: tray between the drive motors</b>
+  <div class="grp"><span>Scene</span><button data-scene="robot">Robot</button><button data-scene="corner">Street corner</button><button data-scene="dump">Drop-off</button></div>
+  <div class="grp"><span>View</span><button data-view="iso">3/4</button><button data-view="side">Side</button><button data-view="top">Top</button><button data-view="front">Front</button><button data-view="rear">Rear</button></div>
+  <div class="grp"><button id="tDeck" class="on">Brick + deck</button><button id="tXray">X-ray</button><button id="tLabels" class="on">Labels</button><button id="tPlay" class="on">Animate</button></div>
+</div>
+<div id="panel"></div>
+<div id="load">Loading LEGO parts...</div>
+<script type="text/plain" id="mpd">/*MPD*/</script>
+<script type="application/json" id="asm">/*ASM*/</script>
+<script type="module">
+import * as THREE from 'three';
+import { LDrawLoader } from 'three/addons/LDrawLoader.js';
+import { OrbitControls } from 'three/addons/OrbitControls.js';
+
+// ============================================================================================
+// Units: cm. Robot frame: x = right, y = up, z = BACKWARD (forward is -z), origin = wheel axle centre on the table.
+// ============================================================================================
+const Q = new URLSearchParams(location.hash.slice(1));
+const T = 30.48, HALF = T / 2;
+const ASM = JSON.parse(document.getElementById('asm').textContent);
+const D = {
+  // drive: kit wheels (rim No.16 + tyre No.17 = 56 mm) on 8L axles through the EV3 Large hubs
+  wheelR: 2.8, wheelX: ASM.dims.WX,
+  // tray between the motors; cardboard walls taped to the rails (15-hole beams on the motor feet)
+  trayHalfW: 4.3, floorY: 3.4, trayFrontZ: -1.2, trayRearZ: 11.0, wallTop: 6.4,   // floor raised onto the rails: the caster fits under it
+  // roller: thin card tube (5.6 cm inside = the tyres, ~5.8 outside) with 1.15 cm flaps, on 2 spare wheels
+  tubeR: 2.9, tip: 4.05, rollerL: ASM.dims.TUBE_L, rollerR: ASM.dims.TUBE_R, rollerY: ASM.dims.YC, rollerZ: ASM.dims.ZC,
+  plateTop: 5.4, pomR: 0.7,
+};
+D.reach = -(D.rollerZ - D.tip);
+// plan outline (x, z) used for clearance checks; matches the parts drawn below
+const OUTLINE = [[-10.0, -D.reach], [9.2, -D.reach], [9.2, -9.2], [11.0, -9.2], [11.0, 2.8], [8.4, 2.8], [8.4, 8.6],
+                 [10.76, 8.6], [10.76, 11.6], [-10.76, 11.6], [-10.76, 8.6], [-8.4, 8.6], [-8.4, 2.8], [-11.0, 2.8],
+                 [-11.0, -10.0], [-10.0, -10.0]];
+
+// ---------------- renderer / scene ----------------
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+document.body.appendChild(renderer.domElement);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x23262e);
+scene.add(new THREE.HemisphereLight(0xffffff, 0x50535c, 1.6));
+const sun = new THREE.DirectionalLight(0xffffff, 2.2);
+sun.position.set(40, 90, 30); sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+Object.assign(sun.shadow.camera, { left: -70, right: 70, top: 70, bottom: -70, near: 1, far: 260 });
+sun.shadow.bias = -0.0004;
+scene.add(sun);
+const camera = new THREE.PerspectiveCamera(35, innerWidth / innerHeight, 0.5, 2000);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+
+// ---------------- materials ----------------
+const M = {
+  card: (c) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.85, side: THREE.DoubleSide }),
+};
+const cardMats = [];
+function cardMat(c, extra = {}) { const m = new THREE.MeshStandardMaterial({ color: c, roughness: 0.85, side: THREE.DoubleSide, ...extra }); cardMats.push(m); return m; }
+const MAT = {
+  green: cardMat(0x34c759), blue: cardMat(0x2f4fd8), orange: cardMat(0xf06a1d), yellow: cardMat(0xf5e14a),
+  grey: cardMat(0xb9bec8), tray: cardMat(0x34c759),
+  axle: new THREE.MeshStandardMaterial({ color: 0x202124, roughness: 0.5 }),
+  acrylic: new THREE.MeshPhysicalMaterial({ color: 0xe8f4ff, roughness: 0.05, transmission: 0, transparent: true, opacity: 0.28, side: THREE.DoubleSide }),
+  pcb: new THREE.MeshStandardMaterial({ color: 0x1f7a3a, roughness: 0.6 }),
+  pcbBlack: new THREE.MeshStandardMaterial({ color: 0x15171c, roughness: 0.6 }),
+  metal: new THREE.MeshStandardMaterial({ color: 0xc8ccd2, roughness: 0.3, metalness: 0.7 }),
+  battery: new THREE.MeshStandardMaterial({ color: 0x2a2c31, roughness: 0.7 }),
+  wood: new THREE.MeshStandardMaterial({ color: 0xd9b27c, roughness: 0.8 }),
+  table: new THREE.MeshStandardMaterial({ color: 0xeceef1, roughness: 0.95 }),
+  tape: new THREE.MeshBasicMaterial({ color: 0x1e2a6e }),
+  bucket: new THREE.MeshStandardMaterial({ color: 0x4b8bd6, roughness: 0.6, side: THREE.DoubleSide }),
+};
+
+// ---------------- small geometry helpers ----------------
+function box(w, h, d, mat, x = 0, y = 0, z = 0, parent) {
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+  m.position.set(x, y, z); m.castShadow = m.receiveShadow = true;
+  if (parent) parent.add(m);
+  return m;
+}
+function boxMinMax(x0, x1, y0, y1, z0, z1, mat, parent) {
+  return box(x1 - x0, y1 - y0, z1 - z0, mat, (x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2, parent);
+}
+function cylX(r, len, mat, x, y, z, parent, seg = 24) {
+  const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, len, seg), mat);
+  m.rotation.z = Math.PI / 2; m.position.set(x, y, z); m.castShadow = true;
+  if (parent) parent.add(m);
+  return m;
+}
+function cylZ(r, z0, z1, mat, x, y, parent) {
+  const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, z1 - z0, 16), mat);
+  m.rotation.x = Math.PI / 2; m.position.set(x, y, (z0 + z1) / 2); m.castShadow = true;
+  if (parent) parent.add(m);
+  return m;
+}
+// a sheet swept along x from x0 to x1, following a polyline of (z, y) points
+function sheetX(pts, x0, x1, mat, parent) {
+  const pos = [], idx = [];
+  pts.forEach(([z, y]) => { pos.push(x0, y, z, x1, y, z); });
+  for (let i = 0; i < pts.length - 1; i++) { const a = 2 * i; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx); g.computeVertexNormals();
+  const m = new THREE.Mesh(g, mat); m.castShadow = m.receiveShadow = true;
+  if (parent) parent.add(m);
+  return m;
+}
+// flat polygon from 3D points (convex, fan triangulated)
+function poly(points, mat, parent) {
+  const pos = points.flat(), idx = [];
+  for (let i = 1; i < points.length - 1; i++) idx.push(0, i, i + 1);
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx); g.computeVertexNormals();
+  const m = new THREE.Mesh(g, mat); m.castShadow = m.receiveShadow = true;
+  if (parent) parent.add(m);
+  return m;
+}
+const arcPts = (cz, cy, r, a0, a1, n = 24) => Array.from({ length: n + 1 }, (_, i) => {
+  const a = THREE.MathUtils.degToRad(a0 + (a1 - a0) * i / n); return [cz + r * Math.cos(a), cy + r * Math.sin(a)];
+});
+
+// ---------------- LDraw parts ----------------
+const PARTS = {};
+function lego(name) {
+  const src = PARTS[name];
+  if (!src) throw new Error('missing part ' + name);
+  const holder = new THREE.Group();
+  holder.scale.setScalar(0.04);            // LDU -> cm
+  holder.rotation.x = Math.PI;             // LDraw is -y up
+  holder.add(src.clone());
+  const g = new THREE.Group(); g.add(holder);
+  return g;
+}
+function place(obj, parent, [x, y, z], rot = [0, 0, 0], order = 'XYZ') {
+  obj.position.set(x, y, z); obj.rotation.set(rot[0], rot[1], rot[2], order); parent.add(obj); return obj;
+}
+// a technic beam lying flat (holes vertical); LDraw beams run along z with vertical holes by default.
+// Places it so that hole `ha` (counted from the beam's -z end) sits on point a and the beam points toward b.
+function beamOn(name, holes, a, b, y, parent, ha = 0) {
+  const g = new THREE.Group(); g.add(lego(name));
+  const dx = b[0] - a[0], dz = b[1] - a[1], len = Math.hypot(dx, dz) || 1, ux = dx / len, uz = dz / len;
+  const off = ((holes - 1) / 2 - ha) * 0.8;                     // centre relative to hole ha, along the beam
+  g.position.set(a[0] + ux * off, y, a[1] + uz * off);
+  g.rotation.y = Math.atan2(dx, dz);
+  parent.add(g); return g;
+}
+function placeBasis(obj, parent, pos, ex, ey, ez) {
+  obj.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(new THREE.Vector3(...ex), new THREE.Vector3(...ey), new THREE.Vector3(...ez)));
+  obj.position.set(...pos); parent.add(obj); return obj;
+}
+const ON_EDGE_X = [0, 0, Math.PI / 2];        // beam along z, holes along x (pinned to a side face)
+const UPRIGHT = [Math.PI / 2, 0, 0];           // beam vertical, holes along x? no: along z -> use for posts
+const USED = {};                                // kit tally
+const use = (k, n = 1) => USED[k] = (USED[k] || 0) + n;
+
+// ============================================================================================
+// Robot
+// ============================================================================================
+const robot = new THREE.Group();
+const deckGroup = new THREE.Group(); robot.add(deckGroup);
+const anim = {};          // moving bits
+const labels = [];        // {el, obj, local}
+function label(text, parent, p) {
+  const el = document.createElement('div'); el.className = 'lbl'; el.textContent = text; document.body.appendChild(el);
+  labels.push({ el, parent, p: new THREE.Vector3(...p) });
+}
+
+const DECK = /^(top_|ear|nxt|upright_)|Pi case|ears_|top_|NXT|cross axle|upright/;
+function placeM(item, parent) {
+  const g = lego(item.f + '.dat'); g.matrixAutoUpdate = false; g.matrix.fromArray(item.m); parent.add(g); return g;
+}
+function buildRobot() {
+  const tW = D.trayHalfW;
+  // every LEGO part and every pin/axle, placed on real holes by assembly.py
+  for (const it of ASM.static) placeM(it, DECK.test(it.n) ? deckGroup : robot);
+  label('EV3 Large drive motors', robot, [6.4, 7.6, 6.2]);
+  label('56 mm wheels on 8L axles (rail - hub - rim)', robot, [-D.wheelX, 6.0, 0]);
+  label('rails: 15-hole beams pinned to the motor feet', robot, [4.8, 3.6, -3.6]);
+  label('back crossbar: ties the two motors (2 pins each side)', robot, [0, 8.0, 10.2]);
+  label('colour sensor, eye 0.8 cm off the table', robot, [9.0, 5.2, 10.6]);
+  label('L-beams pinned through the motor stem', robot, [-7.2, 9.0, 2.4]);
+
+  // ---------------- tray (cardboard, taped to the rails) ----------------
+  boxMinMax(-tW, tW, D.floorY - 0.2, D.floorY, D.trayFrontZ - 3.8, D.trayRearZ, MAT.tray, robot);   // floor runs under the funnel for the sled runner
+  for (const s of [-1, 1]) boxMinMax(s * tW - (s > 0 ? 0 : 0.1), s * tW + (s > 0 ? 0.1 : 0), D.floorY, D.wallTop, D.trayFrontZ - 0.1, D.trayRearZ, MAT.tray, robot);
+  label('tray 8.6 x 12.2 cm (card, taped to the rails)', robot, [0, 1.4, 8.6]);
+  const flap = new THREE.Group(); flap.position.set(0, D.wallTop, D.trayRearZ + 0.1); robot.add(flap);
+  boxMinMax(-tW, tW, -(D.wallTop - D.floorY - 0.1), 0, -0.05, 0.05, MAT.blue, flap);
+  anim.flap = flap;
+
+  // ---------------- roller: cardboard tube + flaps on the EV3 Medium output ----------------
+  const yc = D.rollerY, zc = D.rollerZ, xL = D.rollerL, xR = D.rollerR;
+  const roller = new THREE.Group(); roller.position.set(0, yc, zc); robot.add(roller);
+  const tube = new THREE.Mesh(new THREE.CylinderGeometry(D.tubeR, D.tubeR, xR - xL, 40, 1, true), cardMat(0xf06a1d));
+  tube.rotation.z = Math.PI / 2; tube.castShadow = true; roller.add(tube);
+  // V-angled (chevron) flaps: each row is two half-helices, ends leading and the centre trailing by VLEAD,
+  // so the flaps push pom-poms toward the middle (the tray mouth) while lifting them. ~25 deg to the axis.
+  const SEG = 24, XM = (xL + xR) / 2, HALF = (xR - xL) / 2, VLEAD = 1.28;
+  for (let k = 0; k < 8; k++) {
+    for (let j = 0; j < SEG; j++) {
+      const x0 = xL + (xR - xL) * j / SEG, x1 = xL + (xR - xL) * (j + 1) / SEG, xc = (x0 + x1) / 2;
+      const piv = new THREE.Group(); piv.rotation.x = k * Math.PI / 4 - VLEAD * Math.abs(xc - XM) / HALF; roller.add(piv);
+      const f = new THREE.Mesh(new THREE.BoxGeometry(x1 - x0 + 0.02, 0.06, D.tip - D.tubeR), MAT.blue);
+      f.position.set(xc, 0, (D.tubeR + D.tip) / 2); f.rotation.x = 0.25; f.castShadow = true; piv.add(f);
+    }
+  }
+  // hubs: the two spare wheels (rim + tyre) from assembly.py; the tube is a press fit on the tyres + tape bands
+  const ra = new THREE.Group(); ra.position.set(0, -yc, -zc); roller.add(ra);
+  for (const it of ASM.roller) placeM(it, ra);
+  anim.roller = roller;
+  label('EV3 Medium inside the tube, on 4 x 13-hole beams', robot, [-4.0, yc + 0.6, zc - 4.6]);
+  label('right bearing frame (x 9.8 / 10.6)', robot, [10.6, 8.4, -8.0]);
+  label('left frame (x = -10.6): L-beams, crosspieces, cross blocks', robot, [-10.6, 8.6, -3.0]);
+
+  // guide under the roller (touches the table), hood + deflector over it
+  const guide = arcPts(zc, yc, yc, 265, 385, 30);           // carries pom-poms up to 25 deg behind the axis (y 6.3)
+  sheetX(guide, xL, xR, MAT.blue, robot);
+  const hood = arcPts(zc, yc, D.tip + 0.8, 125, 60, 12);
+  hood.push([-4.4, 8.2]);
+  sheetX(hood, xL, xR, MAT.yellow, robot);
+  // funnel: roller width down to the tray mouth, walls kept in front of the tyres
+  const rel = guide[guide.length - 1], zA = rel[0] + 0.1, zB = D.trayFrontZ - 0.1, yB = D.plateTop + 0.2;
+  for (const s of [-1, 1]) poly([[s * xR, 3.6, zA], [s * tW, 3.6, zB], [s * tW, 8.6, zB], [s * xR, 8.6, zA]], MAT.grey, robot);   // walls start above the rails
+  poly([[xL, rel[1], rel[0]], [xR, rel[1], rel[0]], [xR, rel[1], zA], [tW, yB, zB], [-tW, yB, zB], [xL, rel[1], zA]], MAT.blue, robot);
+
+  // ---------------- pusher: NXT crank -> rod -> L-beam with the card plate ----------------
+  const pus = new THREE.Group(); robot.add(pus);
+  anim.pusherObjs = ASM.pusher[0].parts.map(it => placeM(it, pus));
+  const plate = new THREE.Group(); robot.add(plate);
+  boxMinMax(-tW + 0.15, tW - 0.15, D.floorY + 0.1, D.plateTop, 0.36, 0.66, cardMat(0xf06a1d), plate);
+  for (const s of [-1, 1]) boxMinMax(s * (tW - 0.12) - 0.06, s * (tW - 0.12) + 0.06, D.floorY + 0.1, D.plateTop, -2.6, 0.66, cardMat(0xf06a1d), plate);  // sled cheeks
+  anim.plate = plate;
+  for (const s of [-1, 1]) boxMinMax(s > 0 ? tW - 0.6 : -tW, s > 0 ? tW : -tW + 0.6, D.plateTop + 0.08, D.plateTop + 0.2, D.trayFrontZ - 2.0, D.trayRearZ, MAT.yellow, robot);  // guide lips
+  label('sled: plate + 2 cheeks run under card lips on both walls', robot, [3.0, 7.0, 5.5]);
+  label('steel ball caster, 7.2 cm behind the axle', robot, [0, 1.0, 7.2]);
+  label('pusher: crank 7-hole, rod 11-hole, L-beam sled + card plate', robot, [-2.0, 8.0, 2.5]);
+
+  // ---------------- Pi 3 + BrickPi3 case, pinned through its side holes; battery on top ----------------
+  const P = ASM.dims.PI;
+  const pi = new THREE.Group(); deckGroup.add(pi);
+  boxMinMax(-P.x, P.x, P.y0, P.y1, P.z0, P.z1, MAT.acrylic, pi);
+  boxMinMax(-P.x + 0.5, P.x - 0.5, P.y0 + 0.4, P.y0 + 0.55, P.z0 + 0.4, P.z1 - 0.4, MAT.pcb, pi);
+  boxMinMax(-P.x + 0.5, P.x - 0.5, P.y0 + 2.1, P.y0 + 2.25, P.z0 + 0.4, P.z1 - 0.4, MAT.pcbBlack, pi);
+  for (let i = 0; i < 4; i++) boxMinMax(-3.4 + i * 1.8, -2.3 + i * 1.8, P.y0 + 2.25, P.y0 + 2.9, P.z1 - 1.3, P.z1 - 0.5, MAT.metal, pi);
+  for (const s of [-1, 1]) for (const y of [12.4, 13.2]) for (const z of [2.4, 8.0]) cylX(0.3, 0.05, MAT.axle, s * (P.x + 0.03), y, z, pi);
+  boxMinMax(-4.0, 4.0, P.y1, P.y1 + 2.4, P.z0 + 0.6, P.z1 - 0.6, MAT.battery, pi);
+  label('Pi 3 + BrickPi3, pinned to 4 L-beam ears; battery on top', deckGroup, [0, P.y1 + 3.0, 5.4]);
+  label('NXT motor (pusher) on the top rails', deckGroup, [3.4, 9.2, 6.4]);
+}
+
+// pusher stroke: u = 0 at rest (plate at the tray front), 1 = fully back; samples precomputed by assembly.py
+function setPusher(u) {
+  const S = ASM.pusher, f = THREE.MathUtils.clamp(u, 0, 1) * (S.length - 1), i = Math.min(S.length - 2, Math.floor(f)), k = f - i;
+  anim.pusherObjs.forEach((o, j) => {
+    const a = S[i].parts[j].m, b = S[i + 1].parts[j].m, e = o.matrix.elements;
+    for (let n = 0; n < 16; n++) e[n] = a[n] + (b[n] - a[n]) * k;
+  });
+  const z = S[i].z + (S[i + 1].z - S[i].z) * k;
+  anim.plate.position.z = z;
+  anim.plateZ = z + 0.51;
+  return z + 0.66;
+}
+const stroke = p => p < 0.55 ? ease(p / 0.55) : 1 - ease((p - 0.55) / 0.45);
+
+// ============================================================================================
+// Pom-poms (simple position-based settling inside the tray, gravity once they leave it)
+// ============================================================================================
+const pomGeo = new THREE.SphereGeometry(D.pomR, 14, 10);
+const pomMats = [0xf7f7f7, 0xf7f7f7, 0xf7f7f7, 0x9a9aa3, 0x2a2a2e].map(c => new THREE.MeshStandardMaterial({ color: c, roughness: 1 }));
+let poms = [];
+function makePoms(n, seed = 7) {
+  for (const p of poms) p.mesh.parent && p.mesh.parent.remove(p.mesh);
+  poms = [];
+  let s = seed; const rnd = () => (s = (s * 16807) % 2147483647) / 2147483647;
+  for (let i = 0; i < n; i++) {
+    const mesh = new THREE.Mesh(pomGeo, pomMats[Math.floor(rnd() * pomMats.length)]); mesh.castShadow = true;
+    const p = { mesh, inTray: true, v: new THREE.Vector3(),
+                pos: new THREE.Vector3((rnd() * 2 - 1) * (D.trayHalfW - 0.9), D.floorY + 0.7 + rnd() * 3, 0.2 + rnd() * (D.trayRearZ - 2.2)) };
+    robot.add(mesh); poms.push(p);
+  }
+  for (let k = 0; k < 120; k++) stepPoms(1 / 60, D.trayFrontZ + 0.15);
+}
+function stepPoms(dt, plateZ) {
+  const r = D.pomR, xmax = D.trayHalfW - 0.12 - r, front = plateZ + 0.15 + r;
+  const tray = poms.filter(p => p.inTray);
+  for (const p of tray) {
+    p.pos.y -= 9 * dt;                                                  // settle
+    if (p.pos.y < D.floorY + r) p.pos.y = D.floorY + r;
+    p.pos.x = THREE.MathUtils.clamp(p.pos.x, -xmax, xmax);
+    if (p.pos.z < front) p.pos.z = front;
+  }
+  for (let it = 0; it < 3; it++) {
+    for (let i = 0; i < tray.length; i++) for (let j = i + 1; j < tray.length; j++) {
+      const a = tray[i].pos, b = tray[j].pos, d = a.distanceTo(b);
+      if (d < 2 * r && d > 1e-6) {
+        const push = (2 * r - d) / 2, n = b.clone().sub(a).divideScalar(d);
+        const aPinned = a.z <= front + 1e-3, bPinned = b.z <= front + 1e-3;
+        if (aPinned && !bPinned) b.addScaledVector(n, 2 * push);
+        else if (bPinned && !aPinned) a.addScaledVector(n, -2 * push);
+        else { a.addScaledVector(n, -push); b.addScaledVector(n, push); }
+      }
+    }
+    for (const p of tray) {
+      if (p.pos.y < D.floorY + r) p.pos.y = D.floorY + r;
+      p.pos.x = THREE.MathUtils.clamp(p.pos.x, -xmax, xmax);
+      if (p.pos.z < front) p.pos.z = front;
+    }
+  }
+  for (const p of tray) {
+    if (p.pos.z > D.trayRearZ + 0.3) {                                 // out of the exit: hand over to world physics
+      p.inTray = false;
+      const w = robot.localToWorld(p.pos.clone());
+      robot.remove(p.mesh); scene.add(p.mesh);
+      p.pos.copy(w);
+      const back = new THREE.Vector3(0, 0, 1).applyQuaternion(robot.quaternion);
+      p.v.copy(back).multiplyScalar(6);
+    }
+  }
+  for (const p of poms) {
+    if (!p.inTray) {
+      p.v.y -= 981 * dt; p.pos.addScaledVector(p.v, dt);
+      const floor = groundHeight(p.pos.x, p.pos.z) + r;
+      if (p.pos.y < floor) { p.pos.y = floor; p.v.set(0, 0, 0); }
+    }
+    p.mesh.position.copy(p.pos);
+  }
+  // flap opens when something presses on it
+  const near = tray.reduce((m, p) => Math.max(m, p.pos.z), -99);
+  const want = near > D.trayRearZ - r - 0.25 ? -Math.min(1.2, (near - (D.trayRearZ - r - 0.25)) * 1.2 + 0.35) : 0;
+  anim.flap.rotation.x += (want - anim.flap.rotation.x) * Math.min(1, dt * 10);
+}
+let groundHeight = () => 0;
+
+// ============================================================================================
+// Worlds
+// ============================================================================================
+const world = new THREE.Group(); scene.add(world);
+function tileFloor(x0, x1, z0, z1, parent) {
+  const f = new THREE.Mesh(new THREE.BoxGeometry(x1 - x0, 2, z1 - z0), MAT.table);
+  f.position.set((x0 + x1) / 2, -1, (z0 + z1) / 2); f.receiveShadow = true; parent.add(f);
+  const lines = [];
+  for (let x = Math.ceil((x0 - HALF) / T) * T + HALF; x <= x1; x += T) lines.push([x, z0, x, z1]);
+  for (let z = Math.ceil((z0 - HALF) / T) * T + HALF; z <= z1; z += T) lines.push([x0, z, x1, z]);
+  for (const [a, b, c, d] of lines) {
+    const w = 0.9;
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(a === c ? w : c - a, a === c ? d - b : w), MAT.tape);
+    m.rotation.x = -Math.PI / 2; m.position.set((a + c) / 2, 0.02, (b + d) / 2); parent.add(m);
+  }
+}
+// houses as world rectangles [x0, x1, y0, y1] in map coords (Y north); three z = -Y
+const HOUSES = [[-HALF, HALF, HALF, HALF + T], [-HALF - T, -HALF, -HALF, HALF], [-HALF - T, -HALF, HALF, HALF + T],
+                [HALF, HALF + T, -HALF - T, -HALF], [-HALF - T, -HALF, -HALF - T, -HALF], [HALF, HALF + T, HALF, HALF + T]];
+function buildCorner() {
+  world.clear();
+  tileFloor(-HALF - T, HALF + 2 * T, -HALF - T, HALF + 1.5 * T, world);
+  for (const [x0, x1, y0, y1] of HOUSES) {
+    const m = boxMinMax(x0 + 0.3, x1 - 0.3, 0, 12, -y1 + 0.3, -y0 - 0.3, MAT.wood, world);
+  }
+  groundHeight = () => 0;
+}
+const EDGE_Z = 0;     // drop-off scene: table edge at z = 0, bucket beyond (+z)
+function buildDump() {
+  world.clear();
+  tileFloor(-2 * T, 2 * T, -2.2 * T, EDGE_Z, world);
+  const bw = T, depth = 20, z0 = EDGE_Z + 0.5;
+  const b = new THREE.Group(); world.add(b);
+  boxMinMax(-bw / 2, bw / 2, -depth, -depth + 0.4, z0, z0 + bw, MAT.bucket, b);
+  boxMinMax(-bw / 2, bw / 2, -depth, 0, z0, z0 + 0.4, MAT.bucket, b);
+  boxMinMax(-bw / 2, bw / 2, -depth, 0, z0 + bw - 0.4, z0 + bw, MAT.bucket, b);
+  boxMinMax(-bw / 2, -bw / 2 + 0.4, -depth, 0, z0, z0 + bw, MAT.bucket, b);
+  boxMinMax(bw / 2 - 0.4, bw / 2, -depth, 0, z0, z0 + bw, MAT.bucket, b);
+  const leg = boxMinMax(-2 * T, 2 * T, -60, -2, -2.2 * T, EDGE_Z - 0.01, new THREE.MeshStandardMaterial({ color: 0x8b7355, roughness: 0.9 }), world);
+  groundHeight = (x, z) => (z <= EDGE_Z ? 0 : (Math.abs(x) < bw / 2 - 0.4 && z > z0 + 0.4 && z < z0 + bw - 0.4) ? -depth + 0.4 : -60);
+}
+function buildPlain() {
+  world.clear();
+  tileFloor(-HALF - T, HALF + T, -HALF - T, HALF + T, world);
+  groundHeight = () => 0;
+}
+
+// ---------------- clearance (corner scene) ----------------
+const densePts = (() => {
+  const out = [];
+  for (let i = 0; i < OUTLINE.length; i++) {
+    const a = OUTLINE[i], b = OUTLINE[(i + 1) % OUTLINE.length];
+    const n = Math.max(1, Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) / 0.4));
+    for (let k = 0; k < n; k++) out.push([a[0] + (b[0] - a[0]) * k / n, a[1] + (b[1] - a[1]) * k / n]);
+  }
+  return out;
+})();
+function clearance() {
+  let best = 1e9;
+  const c = Math.cos(robot.rotation.y), s = Math.sin(robot.rotation.y);
+  for (const [lx, lz] of densePts) {
+    const wx = robot.position.x + lx * c + lz * s, wz = robot.position.z - lx * s + lz * c;
+    const X = wx, Y = -wz;
+    for (const [x0, x1, y0, y1] of HOUSES) {
+      const dx = Math.max(x0 - X, 0, X - x1), dy = Math.max(y0 - Y, 0, Y - y1);
+      const inside = X > x0 && X < x1 && Y > y0 && Y < y1;
+      best = Math.min(best, inside ? -1 : Math.hypot(dx, dy));
+    }
+  }
+  return best;
+}
+const outlineLine = (() => {
+  const pts = OUTLINE.map(([x, z]) => new THREE.Vector3(x, 0.08, z)); pts.push(pts[0].clone());
+  const l = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color: 0xff4d6d }));
+  return l;
+})();
+
+// ---------------- robot pose (map coords: X east, Y north, heading clockwise from north) ----------------
+function setPose(X, Y, hDeg) {
+  robot.position.set(X, 0, -Y);
+  robot.rotation.set(0, -THREE.MathUtils.degToRad(hDeg), 0);
+}
+const ease = t => t < 0 ? 0 : t > 1 ? 1 : t * t * (3 - 2 * t);
+const R_ARC = 14, SHIFT = HALF - R_ARC;
+function cornerPath(u) {          // u in [0, 1]
+  const L1 = 0.8 * T, Larc = Math.PI / 2 * R_ARC, L2 = 0.8 * T, tot = L1 + Larc + L2;
+  let s = u * tot;
+  if (s < L1) {
+    const y = -HALF - L1 + s;
+    const lead = 0.45 * T, k = THREE.MathUtils.clamp((s - (L1 - lead)) / lead, 0, 1);
+    return [SHIFT * ease(k), y, 0];
+  }
+  s -= L1;
+  if (s < Larc) {
+    const a = s / R_ARC;
+    return [HALF - R_ARC * Math.cos(a), -HALF + R_ARC * Math.sin(a), THREE.MathUtils.radToDeg(a)];
+  }
+  s -= Larc;
+  const k = THREE.MathUtils.clamp(s / (0.5 * T), 0, 1);
+  return [HALF + s, -SHIFT * (1 - ease(k)), 90];
+}
+
+// ============================================================================================
+// Scenes, views, UI
+// ============================================================================================
+let SCN = Q.get('scene') || 'robot';
+const VIEWS = {
+  robot: { iso: [[27, 25, 33], [0, 6, 0]], front3: [[32, 24, -42], [0, 4, 0]], side: [[46, 9, 1], [0, 5, 1]], top: [[0, 62, 0.52], [0, 0, 0.5]],
+           front: [[8, 14, -58], [0, 4, 0]], roller: [[-26, 14, -34], [-6, 4.6, -8.5]], rear: [[-22, 26, 48], [0, 3, 6]] },
+  corner: { iso: [[45, 75, 70], [6, 0, -4]], top: [[8, 150, -8.01], [8, 0, -8]], side: [[110, 40, 10], [8, 0, -8]],
+            front: [[10, 60, -110], [8, 0, -8]], rear: [[-20, 60, 110], [8, 0, -8]] },
+  dump: { iso: [[55, 40, 40], [0, -2, 0]], side: [[75, 10, -2], [0, -3, -2]], top: [[0, 110, -2], [0, 0, -2]],
+          front: [[10, 30, -80], [0, 0, -5]], rear: [[0, 22, 70], [0, -2, 0]] },
+};
+function setView(v) {
+  let [p, t] = VIEWS[SCN][v] || VIEWS[SCN].iso;
+  if (Q.get('cam')) { const c = Q.get('cam').split(',').map(Number); p = c.slice(0, 3); t = c.slice(3, 6); }
+  camera.position.set(...p); controls.target.set(...t); controls.update();
+  document.querySelectorAll('[data-view]').forEach(b => b.classList.toggle('on', b.dataset.view === v));
+}
+function setScene(s) {
+  SCN = s; t0 = performance.now(); simT = 0;
+  robot.removeFromParent(); scene.add(robot); robot.position.set(0, 0, 0); robot.rotation.set(0, 0, 0);
+  if (s === 'corner') { buildCorner(); robot.add(outlineLine); } else { outlineLine.removeFromParent(); }
+  if (s === 'dump') buildDump();
+  if (s === 'robot') buildPlain();
+  resetPoms();
+  document.querySelectorAll('[data-scene]').forEach(b => b.classList.toggle('on', b.dataset.scene === s));
+  setView(Q.get('view') || 'iso');
+  panel();
+}
+function resetPoms() { makePoms(SCN === 'corner' ? 30 : 46); }
+
+function panel() {
+  const funnel = (D.trayFrontZ - (D.rollerZ + D.rollerY * Math.cos(THREE.MathUtils.degToRad(12)))).toFixed(1);
+  const S = ASM.pusher, stroke = (S[S.length - 1].z - S[0].z).toFixed(1);
+  const rows = [
+    ['Overall width (tyres, roller frames)', '22.0 cm'], ['Roller', (D.rollerR - D.rollerL).toFixed(1) + ' cm long, tube \u00f8' + (2 * D.tubeR).toFixed(1) + ' (5.6 inside), tips \u00f8' + (2 * D.tip).toFixed(1)],
+    ['Centre of mass (estimate)', ASM.dims.CG[2].toFixed(1) + ' cm behind the axle, ' + ASM.dims.CG[1].toFixed(1) + ' cm up'], ['Caster load (estimate)', Math.round(100 * ASM.dims.CG[2] / 7.2) + '% (wheels ' + Math.round(100 - 100 * ASM.dims.CG[2] / 7.2) + '%)'],
+    ['Front reach (roller tips)', D.reach.toFixed(2) + ' cm'], ['Rear (colour sensors)', '11.6 cm'], ['Track (wheel centres)', (2 * D.wheelX).toFixed(1) + ' cm'],
+    ['Colour sensor eyes', 'x = \u00b19.7, 10.4 cm behind axle'], ['Tray inside', '8.6 x 12.2 x 3.0 cm'],
+    ['Pusher plate stroke', stroke + ' cm'], ['Funnel length (roller back to tray)', funnel + ' cm'],
+  ];
+  const tally = Object.entries(ASM.kit).map(([k, [n, of]]) => `<tr><td>${k}</td><td${of && n > of ? ' style="color:#f87171"' : ''}>${n} of ${of ?? '?'}</td></tr>`).join('');
+  const axles = Object.entries(ASM.axles).sort((a, b) => parseInt(a[0]) - parseInt(b[0])).map(([k, n]) => `${n}x ${k}`).join(', ');
+  const notes = {
+    robot: 'Every LEGO part is the official LDraw model of a piece on your kit checklist, sitting on real holes; every pin and axle is drawn (black pins, blue 3L pins, black axles). Orange/blue/yellow/green/grey sheets are cardboard, taped. Turn off "Brick + deck" to see the tray and pusher.',
+    corner: 'Phase 2 corner on a 14 cm arc (what the code does today). The red line is the outline used for the clearance number.',
+    dump: 'Reverse until the flap is ~1.5 cm past the table edge, then two pusher strokes.',
+  };
+  document.getElementById('panel').innerHTML = `<h3>Proposed layout (v5.1)</h3><table>${rows.map(r => `<tr><td>${r[0]}</td><td>${r[1]}</td></tr>`).join('')}</table>
+    <p id="live"></p><p>${notes[SCN]}</p>` + (SCN === 'robot' ? `<h3 style="margin-top:8px">Kit parts used</h3><table>${tally}</table><p>Axles: ${axles}</p>` : '');
+}
+
+let play = !Q.has('t'), showLabels = !Q.has('nolabels'), t0 = performance.now(), simT = 0;
+document.querySelectorAll('[data-scene]').forEach(b => b.onclick = () => setScene(b.dataset.scene));
+document.querySelectorAll('[data-view]').forEach(b => b.onclick = () => setView(b.dataset.view));
+const tog = (id, fn) => { const b = document.getElementById(id); b.onclick = () => { b.classList.toggle('on'); fn(b.classList.contains('on')); }; return b; };
+tog('tDeck', on => deckGroup.visible = on);
+tog('tXray', on => cardMats.forEach(m => { m.transparent = on; m.opacity = on ? 0.35 : 1; m.depthWrite = !on; m.needsUpdate = true; }));
+tog('tLabels', on => showLabels = on);
+tog('tPlay', on => play = on);
+if (Q.has('nodeck')) { deckGroup.visible = false; document.getElementById('tDeck').classList.remove('on'); }
+if (Q.has('nolabels')) document.getElementById('tLabels').classList.remove('on');
+if (Q.has('noui')) document.body.classList.add('noui');
+
+// ---------------- timeline per scene ----------------
+function update(t, dt) {
+  let u = 0;
+  const live = document.getElementById('live');
+  if (SCN === 'robot') {
+    const c = t % 9;                       // a stroke every 9 s
+    const u = c < 1.5 ? 0 : c < 6.5 ? stroke((c - 1.5) / 5) : 0;
+    if (c < dt * 1.5 && t > 1) resetPoms();
+    live && (live.textContent = `pusher plate: ${(setPusher(u) - D.trayFrontZ).toFixed(1)} cm into the tray`);
+  } else if (SCN === 'corner') {
+    const u = (t % 14) / 12;
+    const [X, Y, h] = cornerPath(Math.min(1, u));
+    setPose(X, Y, h);
+    setPusher(0);
+    const c = clearance();
+    if (live) { live.textContent = `closest house: ${c < 0 ? 'HIT' : c.toFixed(1) + ' cm'}  (heading ${h.toFixed(0)} deg)`; live.style.color = c < 0.3 ? '#f87171' : '#86efac'; }
+  } else if (SCN === 'dump') {
+    const c = t % 20;
+    const zEnd = EDGE_Z + 1.5 - D.trayRearZ - 0.1;          // flap 1.5 cm past the edge
+    let z = zEnd;
+    if (c < 4) z = zEnd - 28 * (1 - ease(c / 4));
+    else if (c > 15.5) z = zEnd - 28 * ease((c - 15.5) / 3);
+    robot.position.set(0, 0, z); robot.rotation.set(0, 0, 0);
+    if (c > 5 && c < 9.5) u = stroke((c - 5) / 4.5);
+    if (c > 10 && c < 14.5) u = stroke((c - 10) / 4.5);
+    if (c < dt * 1.5 && t > 1) resetPoms();
+    setPusher(u);
+    const inB = poms.filter(p => !p.inTray && p.pos.y < -5).length;
+    live && (live.textContent = `in the bucket: ${inB} / ${poms.length}   ·   wheel to edge: ${(-(z + D.wheelR)).toFixed(1)} cm`);
+  }
+  // roller + gears spin while driving / always in robot view
+  const spin = (SCN === 'dump' && (t % 20) > 4.5 && (t % 20) < 15.5) ? 0 : 1;
+  anim.roller.rotation.x -= 9 * dt * spin;
+  stepPoms(dt, anim.plateZ);
+}
+
+function drawLabels() {
+  const w = innerWidth, h = innerHeight, v = new THREE.Vector3();
+  for (const L of labels) {
+    const vis = showLabels && SCN === 'robot' && L.parent.visible !== false && (L.parent !== deckGroup || deckGroup.visible);
+    if (!vis) { L.el.style.display = 'none'; continue; }
+    v.copy(L.p); L.parent.localToWorld(v); v.project(camera);
+    if (v.z > 1) { L.el.style.display = 'none'; continue; }
+    L.el.style.display = 'block';
+    L.el.style.left = ((v.x + 1) / 2 * w) + 'px'; L.el.style.top = ((1 - v.y) / 2 * h - 10) + 'px';
+  }
+}
+
+addEventListener('resize', () => { renderer.setSize(innerWidth, innerHeight); camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); });
+
+// ---------------- load parts, build, run ----------------
+const loader = new LDrawLoader();
+loader.setConditionalLineMaterial(THREE.LineBasicMaterial);
+loader.setMaterials([]);
+loader.smoothNormals = true;
+loader.parse(document.getElementById('mpd').textContent, group => {
+  group.traverse(o => {
+    if (o.isConditionalLine) o.visible = false;
+    if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; }
+    if (o.isLineSegments && !o.isConditionalLine && o.material) { o.material.transparent = true; o.material.opacity = 0.35; }
+  });
+  for (const c of group.children) PARTS[c.userData.fileName] = c;
+  try {
+    buildRobot();
+    setScene(SCN);
+    if (Q.has('xray')) document.getElementById('tXray').click();
+  } catch (e) { document.getElementById('load').textContent = 'Error: ' + e.message; throw e; }
+  document.getElementById('load').remove();
+  if (Q.has('t')) {
+    const tf = parseFloat(Q.get('t')), step = 1 / 60;
+    for (let t = 0; t <= tf; t += step) update(t, step);
+    controls.update(); renderer.render(scene, camera); drawLabels();
+    if (Q.has('sweep')) {
+      let best = 1e9, at = 0;
+      for (let i = 0; i <= 2000; i++) { const [X, Y, h] = cornerPath(i / 2000); setPose(X, Y, h); const c = clearance(); if (c < best) { best = c; at = h; } }
+      document.title = `SWEEP min ${best.toFixed(2)} cm at heading ${at.toFixed(1)}`;
+      return;
+    }
+    document.title = 'READY';
+    return;
+  }
+  let last = performance.now();
+  renderer.setAnimationLoop(() => {
+    const now = performance.now(), dt = Math.min(0.05, (now - last) / 1000); last = now;
+    if (play) { simT += dt; update(simT, dt); }
+    controls.update(); renderer.render(scene, camera); drawLabels();
+  });
+}, e => { console.error('ERR ' + (e && e.stack || e)); const l = document.getElementById('load'); if (l) l.textContent = 'Error: ' + e; });
+</script>
+</body>
+</html>

@@ -1,0 +1,21 @@
+# generated / robot-specific
+__pycache__/
+.ruff_cache/
+logs/
+sim/session/
+calibration_params.json
+street_map.json
+dashboard_colour_cal.json
+dashboard_points.json
+# large media and course handouts (not code)
+Nov17_progress/
+*.jpg
+*.jpeg
+*.png
+*.HEIC
+*.MOV
+*.mov
+*.pdf
+!docs/renders/*.png
+!docs/*.png
+project.txt
