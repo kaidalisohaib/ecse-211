@@ -2,7 +2,31 @@
 
 Newest first. Group 13, ECSE 211 F26 final project.
 
-## 2026-11-22 (newest): why Phase 1 and Phase 2 leave the origin differently; compact S-curve rejected
+## 2026-11-23 (newest): code matched to the built robot; pushed to GitHub
+
+User in the lab (photos): drive C left / D right, belt B (works at power -50), dump A (-140 deg empties the bin,
+then +50 / -50 shakes), colour S1 left / S2 right; tyres 5.75-8 cm from the centre (track 13.75), colour sensors
+4 cm behind the axle, a bit inside the wheels. The bin is at the back and tips backward (assumed from the photos:
+confirm). Asked how to build the funnel and where to put the ultrasonic.
+- Code: ports, `TRACK_WIDTH` 13.75, `SENSOR_OFFSET_BY_PHASE` -4, new `ROLLER_SWEEP_POWER = -50` (belt runs on
+  power; dashboard belt buttons and bench 8 follow it), `DUMP_TILT_DEG` 140, `DUMP_PLUS = None`,
+  `DUMP_MINUS = "BACK"`, `DUMP_SHAKE_DEG` 50. A dump toward a `None` side now refuses to move (the + button would
+  swing the bin forward into the belt). `SENSOR_SPACING` still 12: MEASURE.
+- `auto_tuner.py` seeded its first spin with a fixed 12 cm track: on 13.75 it stopped ~45° short and measured the
+  track 17-24 % low. Seeds now come from core: sim error 0.0-0.4 %.
+- Sim follows the wiring: `sim/world.py` reads ports, polarity, track, radius, sensor spacing from
+  `snowplow_core.py`; motors in power mode now move (10 dps per %).
+- Back pour: turns in place on the drop-off tile (to face inland, and to leave). An inland tile Phase 1 never saw
+  can be a house (u_reversed: contacts on every seed). Fix: after a BACK pour, stop `EDGE_LANE_SHIFT_CM` toward
+  the edge before turning. (A first try that treated unseen tiles as houses cancelled the shift away from real
+  ones: 22 contacts in 150. Reverted.)
+- Sim (`sim/session/lab_nov22/`): 1t n1 147/150 clean, 0 contacts, P1 69 / P2 91 s median (side pour: 88).
+  n2 97/100, one contact (random-15). Fixed turret-less Phase 1 (US fixed forward): 20/60 clean, P1 median 121 s,
+  14 wrong maps; with the turret 59/60. So Phase 1 needs the turret.
+- Pushed `final-project/` to GitHub (commit 0c07605; `.gitignore` keeps out logs, media, PDFs, sim results,
+  calibration). Pi pull at `~/ecse-211` still to do (no SSH key; the user runs it).
+
+## 2026-11-22: why Phase 1 and Phase 2 leave the origin differently; compact S-curve rejected
 
 User: "in phase 2 it did this curve which seemed better / in phase 1 it first turned 90 degrees then did an arc
 ... why is it different and does the S curve make the odometry less accurate or not?"
