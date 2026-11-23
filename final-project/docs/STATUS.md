@@ -2,7 +2,19 @@
 
 Newest first. Group 13, ECSE 211 F26 final project.
 
-## 2026-11-23 (newest): code matched to the built robot; pushed to GitHub
+## 2026-11-23 (newest): Phase 1 turret on B, ultrasonic S4; robot repo repaired; dashboard on the Pi
+
+- User: Phase 1 turret motor on B (the belt's port), ultrasonic on S4. `TURRET_PORT = "B"` / `DUMP_PORT = "A"`
+  replace `TURRET_OR_DUMP_PORT`; dashboard motor roles per phase. Commit ff3fa80, pulled on the Pi.
+- The Pi's `~/ecse-211` git repo was corrupt (8 empty object files, `main` pointing at an empty commit, likely a
+  power cut). Backed up to `~/ecse-211.backup-20261123-0002`, removed the empty files, `main` -> 3065153 (last
+  good, from the reflog), fetched, fast-forwarded. `lab4/lab4_navigation.py` keeps its uncommitted edit.
+- SSH key from the laptop is on the Pi (`ssh pi@dpm-13.local` works without a password).
+- Dashboard started on the Pi (log `/tmp/dashboard_run.log`): battery 12.0 V, all 4 motors report encoders,
+  S1 8 / S2 21 red (both under `LINE_THRESHOLD` 30: check where the robot was standing, calibrate on the
+  table), S4 ultrasonic 39 cm.
+
+## 2026-11-23: code matched to the built robot; pushed to GitHub
 
 User in the lab (photos): drive C left / D right, belt B (works at power -50), dump A (-140 deg empties the bin,
 then +50 / -50 shakes), colour S1 left / S2 right; tyres 5.75-8 cm from the centre (track 13.75), colour sensors
