@@ -9,6 +9,11 @@ Newest first. Group 13, ECSE 211 F26 final project.
 - The Pi's `~/ecse-211` git repo was corrupt (8 empty object files, `main` pointing at an empty commit, likely a
   power cut). Backed up to `~/ecse-211.backup-20261123-0002`, removed the empty files, `main` -> 3065153 (last
   good, from the reflog), fetched, fast-forwarded. `lab4/lab4_navigation.py` keeps its uncommitted edit.
+- First real job (turret scan) crashed: the Pi runs Python 3.9 and `float | None` annotations need 3.10.
+  Every module now starts with `from __future__ import annotations` (fd258b9). Checked on the Pi itself:
+  py_compile of all files, sim sample run (P1 56 s, P2 79 s) and bench sim 10/10 under 3.9.
+- Dashboard "Reset enc" turned the motor by its current reading: after a jog the BrickPi still holds the
+  position target, and resetting the encoder makes it chase that target. It now floats the motor first.
 - SSH key from the laptop is on the Pi (`ssh pi@dpm-13.local` works without a password).
 - Dashboard started on the Pi (log `/tmp/dashboard_run.log`): battery 12.0 V, all 4 motors report encoders,
   S1 8 / S2 21 red (both under `LINE_THRESHOLD` 30: check where the robot was standing, calibrate on the
