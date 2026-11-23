@@ -384,7 +384,8 @@ def run_job(args):
             elif job == "turn":
                 core.turn_to((core.theta + (90.0 if a and a[0] == "R" else -90.0)) % 360.0)
             elif job == "dump":
-                core.dump_snow_payload("-" if a and a[0] == "-" else "+")
+                # "+" / "-" from the page's buttons; nothing given: the way the bin is set to pour
+                core.dump_snow_payload(a[0] if a and a[0] in ("+", "-") else (core.dump_directions() or ["+"])[0])
             elif job == "scan":
                 for ang, label in ((-90.0, "left"), (0.0, "ahead"), (90.0, "right")):
                     print(f"   {label:6s} {core.check_direction_distance(ang):6.1f} cm", flush=True)

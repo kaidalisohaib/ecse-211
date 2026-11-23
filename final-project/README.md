@@ -12,6 +12,26 @@ The page shows every motor and sensor live. From it you can:
 - answer the robot's questions;
 - press STOP.
 
+## Where to change things
+
+Every setting is a `NAME = value` line near the top of one of three files. You can edit the file, or use the
+dashboard's **Constants** panel, which writes the same line and keeps a backup in `logs/constants_backup/`.
+
+| What | File, section |
+|---|---|
+| Ports (motors A-D, sensors S1-S4), drive direction (`DRIVE_POLARITY`) | `snowplow_core.py`, "HARDWARE PORT CONFIGURATION" (top) |
+| Wheel radius, track width, colour sensor position (`SENSOR_OFFSET_BY_PHASE`, `SENSOR_SPACING`), line threshold | `snowplow_core.py`, "GEOMETRY & CALIBRATION" |
+| Speeds and steering gains | `snowplow_core.py`, "MOTION PROFILE & CONTROL GAINS" |
+| Turret and ultrasonic (`US_FORWARD_OFFSET_CM`, `US_FACE_CM`, `TURRET_GEAR_RATIO`), robot outline | `snowplow_core.py`, "ULTRASONIC & TURRET" |
+| Belt power, dump angle / direction / shakes | `snowplow_core.py`, "PHASE 2 INTAKE & DUMP SETTINGS" |
+| Time estimates, table size | `snowplow_core.py`, "TIME BUDGET" |
+| Phase 1 strategy (explore mode, street rules) | `phase1_mapping.py`, top |
+| Phase 2: back-pour distances (`DUMP_BACK_LIP_CM`, `DUMP_BACK_SUPPORT_CM`), edge lane, corner arcs | `phase2_snow_removal.py`, top |
+
+After the auto-tuner runs, `calibration_params.json` (on the robot) overrides the wheel radius, wheel scales and
+track width; the Constants panel shows and edits those too. Constants edited on the robot are local changes to
+the robot's git copy: commit them there (or say so) before pulling new code.
+
 The bring-up order and every constant to tune are in [docs/BRINGUP.md](docs/BRINGUP.md). Progress and decisions
 are in [docs/STATUS.md](docs/STATUS.md).
 

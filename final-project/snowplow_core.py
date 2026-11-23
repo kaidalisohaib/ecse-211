@@ -172,8 +172,8 @@ turret_motor = Motor(TURRET_PORT)
 dump_motor = Motor(DUMP_PORT)
 roller_motor = Motor(ROLLER_MOTOR_PORT)
 
-left_color = EV3ColorSensor(LEFT_COLOR_PORT)
-right_color = EV3ColorSensor(RIGHT_COLOR_PORT)
+left_color = EV3ColorSensor(LEFT_COLOR_PORT, mode="red")      # red mode from the start: get_red() would
+right_color = EV3ColorSensor(RIGHT_COLOR_PORT, mode="red")    # otherwise switch modes (and wait) on the first read
 us_sensor = EV3UltrasonicSensor(ULTRASONIC_PORT)
 
 x = 0.0

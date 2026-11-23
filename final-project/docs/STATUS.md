@@ -2,7 +2,26 @@
 
 Newest first. Group 13, ECSE 211 F26 final project.
 
-## 2026-11-23 (newest): Phase 1 turret on B, ultrasonic S4; robot repo repaired; dashboard on the Pi
+## 2026-11-23 (newest): bug sweep for the real robot (user at home, robot offline)
+
+User: "check everything to make sure there are no more bugs because it slows things down a lot", and where to
+change ports / parameters (answered in README "Where to change things").
+- Python 3.9: `vermin` says every file needs at most 3.9 (it catches e.g. `zip(strict=)`, `bisect(key=)`).
+  ruff (pyflakes, bugbear subset): no real errors.
+- Fake BrickPi (sim) vs real `utils/brick.py`: every method the code calls exists with the same signature. The
+  dashboard's real-hardware class only uses real methods.
+- Every dashboard job run on the real-robot code path with the course's dummy BrickPi (no `brickpi3` on the
+  laptop): scan, tile, turn, dump, bench 1-10, Phase 1 (40 s), Phase 2 (50 s): no tracebacks (bench 3/7/9 wait
+  for typed numbers, as designed; the auto-tuner stops with "did not see the target line", as it should with no
+  lines). Dashboard real mode: jog, reset enc, belt power, motor dps, drive, job start all OK.
+- Fixed: the `dump` job with no direction defaulted to "+" (off since `DUMP_PLUS = None`): now the set direction.
+- Changed: colour sensors are created in red mode (the real `get_red()` otherwise switches the mode and waits on
+  the first read, i.e. at the start of a run).
+- Sim unchanged after the fixes: 1t n1 147/150, bench 10/10, tuner within 0.4 %.
+- Not testable without the robot: `DRIVE_POLARITY` on the new chassis, turret direction, colour readings on the
+  table (8 / 21 seen in the lab, under the threshold), sensor and turret offsets. Bench 1-3 cover them.
+
+## 2026-11-23: Phase 1 turret on B, ultrasonic S4; robot repo repaired; dashboard on the Pi
 
 - User: Phase 1 turret motor on B (the belt's port), ultrasonic on S4. `TURRET_PORT = "B"` / `DUMP_PORT = "A"`
   replace `TURRET_OR_DUMP_PORT`; dashboard motor roles per phase. Commit ff3fa80, pulled on the Pi.
