@@ -172,7 +172,7 @@ def run_once(map_name, seed, noise, verbose, reposition=True, dark=False, p2_sid
     res.update({
         "pompoms": f"{got}/{total}",
         "p1_min_clear": w.min_clearance[1], "p2_min_clear": w.min_clearance[2],
-        "p2_contacts": w.contacts[2], "offtable": len(w.offtable),
+        "p1_contacts": w.contacts[1], "p2_contacts": w.contacts[2], "offtable": len(w.offtable),
         "contact_log": w.contact_log, "log": out.getvalue(),
     })
     return res
@@ -183,7 +183,8 @@ def fmt(r):
         return f"{r['map']:>10} seed {r['seed']:>2}: ERROR {r['error']}"
     return (f"{r['map']:>10} seed {r['seed']:>2}: P1 {r.get('p1_time', 0):5.1f}s "
             f"map {'OK ' if r.get('map_ok') else 'BAD'} | P2 {r.get('p2_time', 0):5.1f}s "
-            f"pompoms {r['pompoms']:>7} | P1 clr {r.get('p1_min_clear', 0):4.1f} | P2 min clearance {r['p2_min_clear']:5.2f} cm, contacts {r['p2_contacts']} "
+            f"pompoms {r['pompoms']:>7} | P1 clr {r.get('p1_min_clear', 0):4.1f}"
+            f"{' TOUCHED x%d' % r['p1_contacts'] if r.get('p1_contacts') else ''} | P2 min clearance {r['p2_min_clear']:5.2f} cm, contacts {r['p2_contacts']} "
             f"| off-table {r['offtable']} | home err P1 {r.get('p1_end_err', 0):.1f} P2 {r.get('p2_end_err', 0):.1f} cm")
 
 

@@ -25,6 +25,23 @@ _real_time, _real_sleep = time.time, time.sleep   # captured before run_sim patc
 
 T = 30.48
 
+# Houses and lines as on the lab table (photo 2026-11-22): houses are cardboard boxes (10 in = 25.4 cm on a 30.48 cm
+# tile), not always centred or square to the grid; the grid lines are ~0.55 cm wide. Set from the environment so
+# stress.py / run_sim.py can switch them: SNOWPLOW_SIM_HOUSES = "SIZE_CM,JITTER_CM,ROT_DEG" (or "tile" = every
+# house fills its whole tile, the old model), SNOWPLOW_SIM_LINE_CM = line width.
+def _env_floats(name, default):
+    v = os.environ.get(name, "").strip()
+    if not v:
+        return default
+    if v == "tile":
+        return None
+    return tuple(float(a) for a in v.split(","))
+
+
+HOUSES_DEFAULT = None           # None = full tiles (every house edge on its line: the worst case that still follows
+                                # the rules); (size, jitter, rotation) = boxes. stress.py --houses box = the lab table.
+LINE_CM_DEFAULT = 0.55          # measured on the lab table photo (was 0.9)
+
 
 def _robot_wiring(path=os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "snowplow_core.py")):
     """Ports, drive polarity and nominal geometry straight from snowplow_core.py (not imported: run_sim imports it
@@ -120,6 +137,20 @@ class World:
         self.polarity = int(WIRING["DRIVE_POLARITY"])
         self.table = TABLE if table is None else (table[0] * T, (table[1] + 1) * T, table[2] * T, (table[3] + 1) * T)
         self.boxes = set(boxes)
+        # Each house's footprint: centre, half size, rotation (rad). Its own random stream: the robot's noise
+        # (self.rng) stays the same whichever house model is used.
+        hrng = random.Random(f"houses-{seed}")
+        houses = _env_floats("SNOWPLOW_SIM_HOUSES", HOUSES_DEFAULT)
+        self.house = {}
+        for b in sorted(self.boxes):
+            cx, cy = (b[0] + 0.5) * T, (b[1] + 0.5) * T
+            if houses is None:
+                self.house[b] = (cx, cy, T / 2.0, 0.0)
+            else:
+                size, jitter, rot = houses
+                self.house[b] = (cx + hrng.uniform(-jitter, jitter), cy + hrng.uniform(-jitter, jitter), size / 2.0,
+                                 math.radians(hrng.uniform(-rot, rot)))
+        self.line_half = (_env_floats("SNOWPLOW_SIM_LINE_CM", (LINE_CM_DEFAULT,)) or (LINE_CM_DEFAULT,))[0] / 2.0
         self.noise = noise
         self.call_cost = call_cost
         self.t = 0.0
@@ -210,12 +241,13 @@ class World:
         dx, dy = px - self.x, py - self.y
         return dx * c - dy * s, dx * s + dy * c   # (lat, fwd)
 
-    @staticmethod
-    def _box_dist(px, py, b):
-        x0, y0 = b[0] * T, b[1] * T
-        dx = max(x0 - px, 0.0, px - (x0 + T))
-        dy = max(y0 - py, 0.0, py - (y0 + T))
-        return math.hypot(dx, dy)
+    def _box_dist(self, px, py, b):
+        """Distance from a point to house b's footprint (0 inside)."""
+        cx, cy, hs, a = self.house[b]
+        ca, sa = math.cos(a), math.sin(a)
+        u = (px - cx) * ca + (py - cy) * sa            # point in the house's own frame
+        v = -(px - cx) * sa + (py - cy) * ca
+        return math.hypot(max(abs(u) - hs, 0.0), max(abs(v) - hs, 0.0))
 
     def _checks(self):
         tx, ty = int(math.floor(self.x / T)), int(math.floor(self.y / T))
@@ -305,7 +337,7 @@ class World:
         px, py = self.to_world(lat, self.sensor_offset)
         if not (self.table[0] <= px <= self.table[1] and self.table[2] <= py <= self.table[3]):
             return 1
-        half = 0.45
+        half = self.line_half
         on_line = (abs(px / T - round(px / T)) * T <= half) or (abs(py / T - round(py / T)) * T <= half)
         if self.dark_pompoms:
             for p in self.pompoms:
@@ -332,10 +364,14 @@ class World:
     def _ray(self, ox, oy, heading):
         dx, dy = math.sin(math.radians(heading)), math.cos(math.radians(heading))
         best = None
-        for (bx, by) in self.boxes:
-            x0, x1, y0, y1 = bx * T, (bx + 1) * T, by * T, (by + 1) * T
+        for b in self.boxes:
+            # Ray in the house's own frame (rotated square, half size hs round its centre).
+            cx, cy, hs, a = self.house[b]
+            ca, sa = math.cos(a), math.sin(a)
+            ou, ov = (ox - cx) * ca + (oy - cy) * sa, -(ox - cx) * sa + (oy - cy) * ca
+            du, dv = dx * ca + dy * sa, -dx * sa + dy * ca
             tmin, tmax, nrm = -1e9, 1e9, None
-            for (o, d, lo, hi, axis) in ((ox, dx, x0, x1, "x"), (oy, dy, y0, y1, "y")):
+            for (o, d, lo, hi, axis) in ((ou, du, -hs, hs, "x"), (ov, dv, -hs, hs, "y")):
                 if abs(d) < 1e-9:
                     if o < lo or o > hi:
                         tmin = 1e9
@@ -347,7 +383,7 @@ class World:
                     tmin, nrm = t1, axis
                 tmax = min(tmax, t2)
             if tmin <= tmax and tmin > 0 and nrm is not None:
-                incidence = abs(dx) if nrm == "x" else abs(dy)   # cos of angle to the face normal
+                incidence = abs(du) if nrm == "x" else abs(dv)   # cos of angle to the face normal
                 if incidence >= math.cos(math.radians(50)):
                     if best is None or tmin < best:
                         best = tmin

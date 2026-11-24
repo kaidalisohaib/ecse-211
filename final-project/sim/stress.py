@@ -55,6 +55,8 @@ def problems(r, min_pompoms):
         out.append(f"P1 {r['p1_time']:.0f}s > {LIMIT:.0f}")
     if r.get("p2_time", 0) > LIMIT:
         out.append(f"P2 {r['p2_time']:.0f}s > {LIMIT:.0f}")
+    if r.get("p1_contacts"):
+        out.append(f"P1 touched a house ({r['p1_contacts']})")
     if r["p2_contacts"]:
         out.append(f"P2 touched a house ({r['p2_contacts']})")
     if r["offtable"]:
@@ -79,7 +81,14 @@ def main():
     ap.add_argument("--set", action="append", default=[], metavar="MOD.NAME=VALUE")
     ap.add_argument("--show", metavar="NAME", help="print a board and exit")
     ap.add_argument("--out", default=os.path.join(SIM_DIR, "session", "stress_results.json"))
+    ap.add_argument("--houses", help='"tile" (each house fills its tile), "box" (25.4 cm boxes, up to 2.5 cm off '
+                                     'centre, 5 deg turned: the lab table) or "SIZE,JITTER,ROT" in cm / deg')
+    ap.add_argument("--line-cm", type=float, help="grid line width in cm (default 0.55, measured on the lab table)")
     a = ap.parse_args()
+    if a.houses:
+        os.environ["SNOWPLOW_SIM_HOUSES"] = {"box": "25.4,2.5,5"}.get(a.houses, a.houses)
+    if a.line_cm:
+        os.environ["SNOWPLOW_SIM_LINE_CM"] = str(a.line_cm)
     if a.show:
         spec = maps.get_map(a.show)
         print(a.show, {k: spec[k] for k in ("s1", "s2", "d1", "d2")}, "street", len(spec["street"]))

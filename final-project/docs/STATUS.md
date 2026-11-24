@@ -2,7 +2,36 @@
 
 Newest first. Group 13, ECSE 211 F26 final project.
 
-## 2026-11-24 (newest): live sensor graphs; code review fixes
+## 2026-11-24 (newest): lab table photo (box houses, thin lines)
+
+User sent a photo of the lab table with the "houses" to check and adjust.
+- From the photo: houses are ULINE 10x10x10 in boxes (25.4 cm) on 30.48 cm tiles, 4-6 cm apart, not always
+  centred or square to the grid; one or two near the photo edge look close to (maybe over) a line. Grid lines
+  ~0.5-0.6 cm wide (sim had 0.9). Red contrast good: table R~171, line R~45 in the photo.
+- Sim: `SNOWPLOW_SIM_HOUSES` / `stress.py --houses` (`tile` = full tiles, default; `box` = 25.4 cm, up to
+  2.5 cm off centre, up to 5 deg turned; or `SIZE,JITTER,ROT`), own random stream so the robot noise is
+  unchanged. Line width default 0.9 -> 0.55 cm (`--line-cm`). P1 contacts are now reported too (were only
+  visible as P1 clearance 0).
+- Results, 1t noise 1, 150 boards (`sim/session/lab_nov22/`), robot code unchanged:
+  | houses / lines | clean | maps OK | touches | min P2 clearance |
+  |---|---|---|---|---|
+  | full tiles, 0.9 cm (`live_graphs`) | 147 | 150 | 0 | 0.25 |
+  | full tiles, 0.55 cm (`line055`) | 147 | 150 | 0 | 0.44 |
+  | boxes, 0.55 cm (`boxes`) | 147 | 150 | 0 | 0.54 |
+  | boxes up to 1.5 cm over a line (`over15`) | 135 | 150 | 12 runs | 0 |
+  | 12 in boxes (`box12`) | 13 | 150 | 135 runs | 0 |
+  Thin lines: P1 home error median 0.55 -> 0.33 cm, line detection keeps up. Gaps between boxes don't fool the
+  ultrasonic (5-ray +-7 deg cone; a gap is never straight beside the tile centre).
+- The 12 `over15` touches (traced with a call-stack hook): all during 90 deg arcs (10 street corners with houses
+  on both sides, 2 origin arcs), all on the OUTSIDE of the turn, ~20 deg into the arc: the 15 cm round back
+  swings to within ~0.5 cm of the tile line (sim tracking error ~1.5-2 cm off the ideal arc).
+- Tried ARC_RADIUS_CM 14.5 -> 14.0 (more outside room): worse, 18/150 touches on full tiles (inside now tight),
+  33/150 on `over15`. Discarded: 14.5 stays. No robot-code change: a 15 cm-radius plow in a 30.48 cm tile has
+  ~0.5 cm to spare in arcs, so boxes must stay inside their lines.
+- Other kinds, default settings, n 40 (`all_default`): loose 39/40, 18x5 26/40, 9x10 28/40, edge 8/40 (edge
+  boards put the street on the table edge, outside the rules; same with 0.9 cm lines). Bench sim 10/10.
+
+## 2026-11-24: live sensor graphs; code review fixes
 
 User: show the sensors in real time when testing by hand (line detection, distance) without slowing things
 down; how fast does the dashboard update during Phase 1 / 2; review the whole codebase for bugs.

@@ -55,5 +55,5 @@ are in [docs/STATUS.md](docs/STATUS.md).
 | `phase1_mapping.py`, `phase2_snow_removal.py` | the two phases |
 | `bench_tests.py`, `auto_tuner.py`, `demo_runner.py` | bring-up tests, calibration, menu (also runnable alone over SSH) |
 | `vizlog.py`, `visualizer.py` | telemetry from the robot code, and the map drawing (plus `--replay` of `logs/`) |
-| `sim/` | simulator: `run_sim.py` (batch runs on several maps), `test_bench.py` (every bench test), `stress.py` (Phase 1 + 2 on hundreds of random boards: `python3 sim/stress.py --n 100 --kinds all`), `maps.py` (fixed maps + `random[-WxH][-edge][-loose]-SEED`) |
+| `sim/` | simulator: `run_sim.py` (batch runs on several maps), `test_bench.py` (every bench test), `stress.py` (Phase 1 + 2 on hundreds of random boards: `python3 sim/stress.py --n 100 --kinds all`; `--houses box` = 25.4 cm boxes placed loosely like on the lab table, `--line-cm` = grid line width), `maps.py` (fixed maps + `random[-WxH][-edge][-loose]-SEED`) |
 | `utils/` | the course's BrickPi wrapper |
