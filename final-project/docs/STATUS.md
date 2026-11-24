@@ -2,7 +2,24 @@
 
 Newest first. Group 13, ECSE 211 F26 final project.
 
-## 2026-11-24 (newest): the robot dumps on the LEFT
+## 2026-11-24 (newest): sim turns off after the auto-tuner (stale per-map calibration)
+
+User (dashboard sim screenshot, `long` map, Phase 2): pose error 42 cm / -13 deg, "the rotations weren't accurate
+in the sim even if I had already ran the auto tuner".
+- Cause: the dashboard sim kept a calibration per map (`sim/session/<map>/`). The user tuned on `u_reversed`
+  (R 2.1149, track 13.778: within 0.2 % of the simulated robot, 2.1116 / 13.764); `long` still had its file from
+  2026-11-21, made when the code's TRACK_WIDTH was 12 (track 12.009). The simulated robot is built from the code's
+  constants, so since TRACK_WIDTH 13.75 (2026-11-23) that file described another robot: odometry over-counts every
+  turn ~15 %, a 90 deg turn really ~78 deg.
+- `long`, 3 seeds: stale file P1 home error 54-140 cm, maps wrong, 2500-4800 touches, off the table; the user's
+  tuned file: home <= 1 cm, maps right, 0 touches.
+- Fix: one sim calibration for every map, `sim/session/calibration_params.json` (`dashboard.SIM_CALIB`, passed as
+  `jobs.py --calib`; the Constants panel shows it; "Reset sim files" deletes it with the map's street map).
+  `jobs.sim_calibration_mismatch`: a saved file > 2 % off in radius or > 5 % in track (the tuner gets ~0.5 %) is
+  replaced by a calibrated one with a `[SIM]` console line. Seeded the shared file with the user's
+  `u_reversed` tuning. Old per-map files in `sim/session/*/` are no longer read by the dashboard.
+
+## 2026-11-24: the robot dumps on the LEFT
 
 User: "the robot we have always dumps on the left" (the code assumed a back pour, guessed from the photos).
 - `DUMP_MINUS = "LEFT"` (motor A -140 empties it, lab 2026-11-22), `DUMP_PLUS = None`. Dashboard / bench 9 follow.

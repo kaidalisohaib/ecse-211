@@ -18,8 +18,10 @@ every constant in the three robot files with its comment, and saves edits straig
 `logs/constants_backup/`, history in `logs/constants_changes.log`). "Constants for this step" in the Run card
 opens just the ones the selected bring-up step tunes. The tables below remain the reference. **STOP** (or Esc) stops
 whatever runs and brakes every motor. In `--sim`, the top bar also picks the map and the speed. The simulator keeps
-its own calibration and street map per map in `sim/session/` ("Reset sim files" forgets them); it never touches
-the robot's files.
+its own street map per map and one calibration for every map (the same simulated robot) in `sim/session/`
+("Reset sim files" forgets the map's street map and the calibration); it never touches the robot's files. A saved
+calibration that no longer fits the simulated robot (the code's `WHEEL_RADIUS` / `TRACK_WIDTH` changed since) is
+replaced, with a `[SIM]` line in the console.
 
 Every phase run is saved in `logs/`; replay one with `python3 visualizer.py --web --replay logs/` (port 8080, so
 stop the dashboard first or add `--web 8081`).

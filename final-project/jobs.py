@@ -12,7 +12,9 @@ You don't need to run this by hand, but you can:
     answer is read from stdin (the dashboard's console box).
   - Telemetry (map, console, motor/sensor snapshots) goes over UDP to the dashboard.
   - --sim runs the same robot code against sim/world.py, paced in real time (--speed), with its own
-    calibration and street map files in --session (never the real calibration_params.json / street_map.json).
+    street map in --session and calibration in --calib (never the real calibration_params.json /
+    street_map.json). The simulated robot is the same on every map (--seed), so the dashboard keeps one
+    calibration for all of them, like the robot's one calibration_params.json.
 
 This module's top level imports nothing from the robot code, so dashboard.py can import JOB_LABELS and
 bench_test_names() without touching the hardware.
@@ -301,8 +303,13 @@ def setup_sim(args, job):
     run_sim.apply_table(core, spec)
     w.sensor_offset = core.SENSOR_OFFSET_BY_PHASE.get(phase, w.sensor_offset)   # same geometry as the code
     os.makedirs(args.session, exist_ok=True)
-    core.CALIBRATION_FILE = os.path.join(args.session, "calibration_params.json")
-    if not os.path.exists(core.CALIBRATION_FILE):
+    core.CALIBRATION_FILE = args.calib or os.path.join(args.session, "calibration_params.json")
+    os.makedirs(os.path.dirname(os.path.abspath(core.CALIBRATION_FILE)), exist_ok=True)
+    stale = sim_calibration_mismatch(w, core.CALIBRATION_FILE)
+    if stale:
+        print(f"[SIM] {core.CALIBRATION_FILE}: {stale}. It was made for a different simulated robot (an older "
+              f"WHEEL_RADIUS / TRACK_WIDTH): replaced with a calibrated one. Run the auto-tuner to make your own.")
+    if stale or not os.path.exists(core.CALIBRATION_FILE):
         run_sim.write_calibration(w, core.CALIBRATION_FILE)   # a calibrated robot until the tuner is run
     core.MAP_FILE = os.path.join(args.session, "street_map.json")
     return w, spec, core
@@ -484,11 +491,32 @@ def run_job(args):
     return 0 if ok else 1
 
 
+SIM_CALIB_TOLERANCE = {"WHEEL_RADIUS": 0.02, "TRACK_WIDTH": 0.05}   # relative; the tuner gets within ~0.5 %
+
+
+def sim_calibration_mismatch(w, path):
+    """Why a saved simulator calibration doesn't fit this simulated robot (None = it fits or there is none).
+    The simulated robot is built from the code's WHEEL_RADIUS / TRACK_WIDTH (+-3 %), so a file saved before
+    those changed describes another robot: 2026-11-24, a map's file from before TRACK_WIDTH 12 -> 13.75 turned
+    every 90 deg ~12 deg short."""
+    try:
+        with open(path) as f:
+            cal = json.load(f)
+        have = {"WHEEL_RADIUS": float(cal["WHEEL_RADIUS"]), "TRACK_WIDTH": float(cal["TRACK_WIDTH"])}
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+    true = {"WHEEL_RADIUS": w.r_left, "TRACK_WIDTH": w.track}
+    off = [f"{k} {have[k]:.3f} vs {true[k]:.3f} cm" for k in true
+           if abs(have[k] / true[k] - 1.0) > SIM_CALIB_TOLERANCE[k]]
+    return ("saved " + ", ".join(off) + " on the simulated robot") if off else None
+
+
 def main():
     ap = argparse.ArgumentParser(description="Run one robot job (used by dashboard.py).")
     ap.add_argument("--sim", metavar="MAP", help="run against the simulator on MAP")
     ap.add_argument("--session", default=os.path.join("/tmp", "snowplow_dash"),
-                    help="simulator: folder for its calibration and street map files")
+                    help="simulator: folder for its street map (and calibration, without --calib)")
+    ap.add_argument("--calib", help="simulator: calibration file (the dashboard shares one across maps)")
     ap.add_argument("--speed", type=float, default=1.0, help="simulator pacing (1 = real time, 0 = flat out)")
     ap.add_argument("--seed", type=int, default=0, help="simulator seed (same seed = same simulated robot)")
     ap.add_argument("--pose", type=float, nargs=3, metavar=("X", "Y", "TH"), help="simulator start pose")

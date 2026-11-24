@@ -63,6 +63,7 @@ MAP_W, MAP_H = 1150, 560           # the map is drawn at this size; each browser
 PAGE_LOST_SEC = 1.5                # motors the dashboard started stop when no page has polled for this long
 POINTS_FILE = os.path.join(HERE, "dashboard_points.json")   # last gate / drop-off typed on the page
 SIM_SESSION = os.path.join(SIM_DIR, "session")               # --sim only: never the robot's own files
+SIM_CALIB = os.path.join(SIM_SESSION, "calibration_params.json")   # one simulated robot: one calibration, every map
 
 
 # ============================================================ constants from the robot code
@@ -496,7 +497,7 @@ class Hub:
         self.last_seen = time.time()   # last time a page asked for the state (the page's heartbeat)
         self.stop_until = 0.0          # hand driving is refused for a moment after STOP
         self.sim_speed = 1.0
-        self.session = SIM_SESSION if hw.sim else None    # per map: calibration + street map, kept across restarts
+        self.session = SIM_SESSION if hw.sim else None    # per map: street map, kept across restarts
         self.show_world = True         # simulator: the map shows the dashboard's own robot
         self.world_reset = False       # simulator: redraw the board before showing it again
         self.points = self._load_points()
@@ -698,7 +699,12 @@ class Hub:
                 if self.job:
                     return {"ok": False, "error": "a job is running"}
                 shutil.rmtree(os.path.join(self.session, self.hw.map_name), ignore_errors=True)
-            self.log(f"[DASH] simulator files for the {self.hw.map_name} map deleted (calibration, street map)")
+                try:
+                    os.remove(SIM_CALIB)
+                except OSError:
+                    pass
+            self.log(f"[DASH] simulator files deleted: the {self.hw.map_name} map's street map and the simulated "
+                     f"robot's calibration")
             return {"ok": True}
         if cmd == "constants_save":
             done = tuning.save_constants(str(q.get("file")), dict(q.get("changes") or {}))
@@ -868,6 +874,7 @@ class Hub:
             if self.hw.sim:
                 w = self.hw.w
                 cmd += ["--sim", self.hw.map_name, "--session", os.path.join(self.session, self.hw.map_name),
+                        "--calib", SIM_CALIB,
                         "--speed", str(self.sim_speed), "--pose", f"{w.x:.2f}", f"{w.y:.2f}", f"{w.th:.2f}"]
             cmd += [name] + args
             self._clear_map()
@@ -1161,9 +1168,9 @@ class Hub:
                     s["margin"] = round(abs(cal["red_table"] - cal["red_line"]) / 2.0, 1)
 
     def calibration_path(self):
-        """The calibration file the next job will load (the simulator keeps its own per map)."""
+        """The calibration file the next job will load (the simulator keeps its own, one for every map)."""
         if self.hw.sim:
-            return os.path.join(self.session, self.hw.map_name, "calibration_params.json")
+            return SIM_CALIB
         return os.path.join(HERE, "calibration_params.json")
 
     def constants(self):
@@ -1305,7 +1312,7 @@ canvas.scope{width:100%;height:56px;display:block;margin-top:6px;background:var(
  <span class="grp"><span class="lbl" title="Colour sensor mode for the cards and calibration. The robot code always uses red.">Colour</span><span class="seg"><button data-cm="red" title="Reflected red, 0-100 %: what the robot code uses">Red</button><button data-cm="rgb" title="Raw red/green/blue under the sensor's white light, to compare colours">RGB</button></span></span>
  <span id="simbar" class="grp" style="display:none"><span class="lbl">Map</span><select id="simmap"></select>
   <span class="lbl">Speed</span><select id="simspeed"><option value="1">1x</option><option value="2">2x</option><option value="4">4x</option><option value="8">8x</option></select>
-  <button id="simreset" style="margin:0" title="Forget this map's simulated calibration and street map (they are kept across restarts in sim/session/)">Reset sim files</button></span>
+  <button id="simreset" style="margin:0" title="Forget this map's street map and the simulated robot's calibration (kept across restarts in sim/session/)">Reset sim files</button></span>
  <span class="grp"><button id="cbtn" style="margin:0" title="See and change every tunable constant of the robot code">Constants</button>
  <button id="rel" style="margin:0" title="Stop reading the ports, so a script started over SSH can use the brick">Release hardware</button></span>
  <button id="stop" title="Stops the job or script, then brakes every motor (Esc)">STOP</button>
@@ -1370,7 +1377,7 @@ $('rel').onclick=()=>ctl({cmd:'release',v:!(S&&S.released)});
 $('simmap').onchange=e=>{ctl({cmd:'sim_map',v:e.target.value});e.target.blur();};
 $('simspeed').onchange=e=>{ctl({cmd:'sim_speed',v:+e.target.value});e.target.blur();};
 $('step').onchange=e=>e.target.blur();
-$('simreset').onclick=()=>{if(confirm('Forget the simulated calibration and street map of the '+S.sim_map+' map?'))ctl({cmd:'sim_reset'});};
+$('simreset').onclick=()=>{if(confirm('Forget the street map of the '+S.sim_map+' map and the simulated robot\'s calibration?'))ctl({cmd:'sim_reset'});};
 $('truth').onchange=e=>ctl({cmd:'show_truth',v:e.target.checked});
 function ptArgs(){if(S&&S.sim)return[];const a=[];for(const k of['s1','s2','d1','d2'])for(const i of[0,1])a.push($('p_'+k+i).value.trim()||'0');return a;}
 document.addEventListener('click',e=>{
