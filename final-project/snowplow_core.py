@@ -906,6 +906,8 @@ def drive_run(
     end_lane_lead_cm: float = 45.0,
     lane_gain: float | None = None,
     max_steer_deg: float | None = None,
+    approach_cm: float = 0.0,
+    approach_dps: float | None = None,
 ) -> dict:
     """
     Drives n_tiles tiles from start_tile along heading in one motion and stops on the
@@ -919,6 +921,8 @@ def drive_run(
              (Phase 2 shifts toward the inside of the corner arc only there).
     lane_gain / max_steer_deg: stronger cross-track steering than K_LATERAL_DEG_PER_CM / MAX_LATERAL_STEER_DEG,
              for a short run that must reach its lane offset within a tile (Phase 2 drop-off approach).
+    approach_dps: slow to this for the last approach_cm of the run (eased over DECEL_DIST_CM before it), and use
+             lane_gain / max_steer_deg only there: a long drop-off run cruises until its last tile.
     tile_hook(idx, tile) -> bool: called as the axle passes each tile centre; return
              True to stop at the next tile centre (used by the time watchdog).
 
@@ -1124,14 +1128,20 @@ def drive_run(
             break
 
         # ---- speed + cross-track steering ----
-        ceiling = min(speed_dps, LINE_CROSS_MAX_DPS) if in_window else speed_dps
+        ceiling = speed_dps
+        if approach_dps is not None:
+            ceiling = approach_dps + (speed_dps - approach_dps) * min(1.0, max(0.0, (remaining - approach_cm)
+                                                                             / DECEL_DIST_CM))
+        ceiling = min(ceiling, LINE_CROSS_MAX_DPS) if in_window else ceiling
         cmd = compute_trapezoidal_dps(time.time() - t_start, remaining, ceiling)
         lane = v_lane
         if end_lane_offset_cm is not None and remaining < end_lane_lead_cm:
             lane = tile_center_lateral(start_tile, heading) + end_lane_offset_cm
         v_err = get_lateral(heading) - lane
-        cap = MAX_LATERAL_STEER_DEG if max_steer_deg is None else max_steer_deg
-        steer = max(-cap, min(cap, -(K_LATERAL_DEG_PER_CM if lane_gain is None else lane_gain) * v_err))
+        strong = approach_dps is None or remaining < approach_cm
+        cap = MAX_LATERAL_STEER_DEG if max_steer_deg is None or not strong else max_steer_deg
+        gain = K_LATERAL_DEG_PER_CM if lane_gain is None or not strong else lane_gain
+        steer = max(-cap, min(cap, -gain * v_err))
         drive_with_heading_hold(cmd, (heading + steer) % 360.0)
         time.sleep(0.006)
 

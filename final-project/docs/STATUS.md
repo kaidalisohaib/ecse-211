@@ -2,7 +2,40 @@
 
 Newest first. Group 13, ECSE 211 F26 final project.
 
-## 2026-11-24 (newest): sim turns off after the auto-tuner (stale per-map calibration)
+## 2026-11-24 (newest): shorter drop-off routes (turn in place next to a house, cruise the last run)
+
+User (sim screenshot, random-41361): the drop-off looped west / south / east and turned 180, "couldn't it have done
+a simple left turn from the exit with an offset gotten in the drop location, then turned in place?".
+- Cause: drop tile (2,-1) has a house beside it at (3,-1). "direct" (left arc out of the exit, turn 90 in place,
+  pour) got the +1000 "turn in place next to a house" penalty, so the 3-tile "turn" loop won.
+- `drop_spin_clear`: "direct" next to a house is fine when the house is on one side only: it turns
+  SPIN_SHIFT_CM (3) away from it and 3 cm toward the bucket (3.24 cm clearance, like "turn" on the edge lane).
+  Still +1000 with houses on both sides.
+- Before any side pour's last run (not just "turn" next to a house): reverse first when the run is shorter
+  than `TURN_LANE_RUN_CM` (25) **and** starts more than `LANE_MISS_CM` (1) off its lane (`lane_matters`). It now
+  reverses only as far as needed, not always to the tile centre. Without that, plans that arc onto a 1-tile run
+  poured with the axle 15.5-16 cm from the edge instead of 12.4.
+- The last drop-off run cruises (360 dps) until its last tile, then eases to `DROP_APPROACH_DPS` (220) with the
+  strong lane gain (`drive_run(approach_cm, approach_dps)`; the default path is unchanged). Before this, a
+  4-tile "direct" run took 14.4 s instead of ~9.6.
+- `drop_extra_seconds`: the plan choice now counts the slow last tile, the reverse (when the arc can't reach the
+  lane, from `arc_radius_for`) and "direct"'s 10 cm move after its turn (`POUR_SHIFT_DPS` 120).
+  **Kept out of `finish_seconds` (the watchdog)**. A first version added them there and the more pessimistic
+  estimates made the watchdog wrap up sweeps early: -245 s over 150 boards, but mostly from driving the street
+  at cruise instead of sweep speed (the sim's catch doesn't depend on speed). random-41 seed 6 skipped its street
+  entirely (37 -> 4 pom-poms).
+- random-41361: P2 96.8 -> 92.4 s, 0 touches.
+- Stress (`sim/session/lab_nov22/H_*.json` vs `L_*.json`):
+  - 1t (150): 147/150, same pom-poms on every board, 0 touches; P2 97 boards faster (best -8.7 s), 7 slower
+    (worst +4.7 s), mean -2.1 s; pour axle-edge 11.8-12.9 cm.
+  - box (150): 147/150, 0 touches, mean -2.1 s, pom-poms +1.
+  - noise 2 (100): 97/100, same pom-poms, same one touch board as before (random-5); mean -1.95 s.
+  - all kinds (n 40): touches on the same 11 boards (all edge / 9x10 ones from before); 18x5 27/40 clean
+    (was 23); pom-poms +61 net (+38 random-edge-13, +36 random-18x5-10, -12 random-edge-7, a touch board);
+    P2 138 faster, 4 slower, mean -2.6 s.
+- Bench sim 10/10.
+
+## 2026-11-24: sim turns off after the auto-tuner (stale per-map calibration)
 
 User (dashboard sim screenshot, `long` map, Phase 2): pose error 42 cm / -13 deg, "the rotations weren't accurate
 in the sim even if I had already ran the auto tuner".
