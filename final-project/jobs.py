@@ -29,6 +29,7 @@ import socket
 import sys
 import threading
 import time
+from collections import deque
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SIM_DIR = os.path.join(HERE, "sim")
@@ -133,29 +134,60 @@ def phase1_defaults():
 
 
 # ============================================================ child side
-TELEMETRY_SEC = 0.1             # job -> dashboard motor/sensor snapshots: 10 per second (the dashboard samples at 10 Hz)
-LIVE_READ_SEC = 0.15            # a sensor the robot code hasn't read for this long is read by the telemetry thread
+TELEMETRY_SEC = 0.1             # job -> dashboard motor/sensor snapshots ("hw"): 10 per second
+TRACE_SEC = 0.05                # every sensor reading goes to the dashboard ("sens"), in batches this often
+LIVE_READ_SEC = 0.05            # real robot: a sensor the code hasn't read for this long is read by the telemetry
+                                # thread (so the page's graphs keep moving: 20 readings/s at least)
+TRACE = deque(maxlen=6000)      # (real time, port, value) of every sensor reading not sent yet
+TRACE_MIN_SEC = 0.004           # at most 250 readings/s per port go to the graphs (bench 3 reads the ultrasonic
+_trace_last = {}                # flat out for its update-rate test: thousands a second)
+
+
+def trace_read(port, v):
+    """Records one sensor reading for the dashboard's live graphs (deque.append is thread-safe)."""
+    if v is None:
+        return
+    now = _real_time()
+    if now - _trace_last.get(port, 0.0) < TRACE_MIN_SEC:
+        return
+    _trace_last[port] = now
+    TRACE.append((round(now, 3), int(port), round(float(v), 1)))
 
 
 class Telemetry:
-    """Motor/sensor snapshots ("hw" events) to the dashboard, TELEMETRY_SEC apart, from a background thread."""
+    """From a background thread: every sensor reading in batches ("sens", TRACE_SEC apart) and motor/sensor
+    snapshots ("hw", TELEMETRY_SEC apart). `live` (optional) is called every batch, before sending it."""
 
-    def __init__(self, udp_port, read):
+    def __init__(self, udp_port, read, live=None):
         self.addr = ("127.0.0.1", udp_port)
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.read = read
+        self.live = live
         threading.Thread(target=self._loop, daemon=True).start()
 
+    def _send(self, ev):
+        self.sock.sendto(json.dumps(ev, separators=(",", ":")).encode(), self.addr)
+
     def _loop(self):
+        next_hw = 0.0
         while True:
             try:
-                ev = self.read()
-                ev["k"] = "hw"
-                ev["phase"] = CURRENT["phase"]
-                self.sock.sendto(json.dumps(ev, separators=(",", ":")).encode(), self.addr)
+                if self.live is not None:
+                    self.live()
+                batch = []
+                while TRACE and len(batch) < 800:          # < 64 kB per datagram
+                    batch.append(TRACE.popleft())
+                if batch:
+                    self._send({"k": "sens", "s": batch})
+                if _real_time() >= next_hw:
+                    next_hw = _real_time() + TELEMETRY_SEC
+                    ev = self.read()
+                    ev["k"] = "hw"
+                    ev["phase"] = CURRENT["phase"]
+                    self._send(ev)
             except Exception:
                 pass
-            _real_sleep(TELEMETRY_SEC)
+            _real_sleep(TRACE_SEC)
 
 
 CURRENT = {"phase": None}       # hardware the job uses now (sent with every "hw" snapshot; the demo switches)
@@ -220,20 +252,34 @@ def setup_sim(args, job):
     time.time = lambda: 1_000_000.0 + w.t
     time.sleep = lambda dt: w.advance(max(0.0, dt))
 
-    reads, read_t = {}, {}
+    reads, read_t, read_real_t = {}, {}, {}
+    peek = {}                                   # port -> a read that costs no sim time (live graphs)
     for name in ("color_red", "us_cm"):
         def wrapped(port, _orig=getattr(w, name)):
             v = _orig(port)
-            reads[port], read_t[port] = v, w.t
+            reads[port], read_t[port], read_real_t[port] = v, w.t, _real_time()
+            trace_read(port, v)
             return v
         setattr(w, name, wrapped)
+    for port in w.color_ports:
+        peek[port] = (lambda p=port, f=world_mod.World.color_red: f(w, p, peek=True))
+    us_port = int(world_mod.WIRING["ULTRASONIC_PORT"])
+    peek[us_port] = lambda f=world_mod.World.us_cm: f(w, us_port, peek=True)
+
+    def live():
+        """Same as the real robot: a sensor the code hasn't read for LIVE_READ_SEC is read here (a peek)."""
+        now = _real_time()
+        for port, read in peek.items():
+            if now - read_real_t.get(port, 0.0) > LIVE_READ_SEC:
+                read_real_t[port] = now
+                trace_read(port, read())
 
     def snapshot():
         return {"motors": {p: [int(round(m.pos)), int(round(m.vel))] for p, m in w.motors.items()},
                 "sensors": {str(k): round(v, 1) for k, v in reads.items()},
                 "sensor_age": {str(k): round(w.t - t, 2) for k, t in read_t.items()},
                 "pose": [round(w.x, 2), round(w.y, 2), round(w.th, 1)], "bat": None}
-    tele = Telemetry(args.udp, snapshot)
+    tele = Telemetry(args.udp, snapshot, live)
 
     def show_board():
         """While a question waits, simulated time stands still, so nothing would be drawn: send the board and
@@ -266,19 +312,23 @@ def setup_real(args):
     import snowplow_core as core                 # the robot code owns the BrickPi from here on
     from utils import brick
     reads, read_t = {}, {}
-    # port -> the sensor's own read function. The robot code's reads are recorded as they happen; a port the
-    # code hasn't read for LIVE_READ_SEC (e.g. the colour sensors during "Drive 1 tile", which never looks for
-    # lines) is read by the telemetry thread itself, so the page always shows live values. Reading only returns
-    # the BrickPi's latest value (no ping, no mode change), so it doesn't disturb the code.
+    # Every reading the robot code takes is recorded (value for the cards, and the live graphs). A port the code
+    # hasn't read for LIVE_READ_SEC (e.g. the colour sensors during "Drive 1 tile", which never looks for lines)
+    # is read by the telemetry thread itself. A read only returns the BrickPi's latest value (no ping, no mode
+    # change), so it doesn't disturb the code.
     own_read = {core.LEFT_COLOR_PORT: core.left_color.get_red, core.RIGHT_COLOR_PORT: core.right_color.get_red,
                 core.ULTRASONIC_PORT: core.us_sensor.get_cm}
+
+    def note(port, v):
+        if v is not None:
+            reads[port] = v
+            read_t[port] = time.time()
+            trace_read(port, v)
 
     def recorder(port, orig):
         def read():
             v = orig()
-            if v is not None:
-                reads[port] = v
-                read_t[port] = time.time()
+            note(port, v)
             return v
         return read
     core.left_color.get_red = recorder(core.LEFT_COLOR_PORT, own_read[core.LEFT_COLOR_PORT])
@@ -286,16 +336,16 @@ def setup_real(args):
     core.us_sensor.get_cm = recorder(core.ULTRASONIC_PORT, own_read[core.ULTRASONIC_PORT])
     motors = {p: brick.Motor(p) for p in "ABCD"}   # extra handles, read-only use
 
-    def snapshot():
+    def live():
         now = time.time()
         for port, read in own_read.items():
             if now - read_t.get(port, 0.0) > LIVE_READ_SEC:
                 try:
-                    v = read()
+                    note(port, read())
                 except Exception:
-                    v = None
-                if v is not None:
-                    reads[port], read_t[port] = v, now
+                    pass
+
+    def snapshot():
         m = {}
         for p, mot in motors.items():
             st = mot.get_status()
@@ -308,7 +358,7 @@ def setup_real(args):
         now = time.time()
         return {"motors": m, "sensors": {str(k): round(float(v), 1) for k, v in reads.items()},
                 "sensor_age": {str(k): round(now - t, 2) for k, t in read_t.items()}, "bat": bat}
-    Telemetry(args.udp, snapshot)
+    Telemetry(args.udp, snapshot, live)
     return core
 
 

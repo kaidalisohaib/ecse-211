@@ -2,7 +2,28 @@
 
 Newest first. Group 13, ECSE 211 F26 final project.
 
-## 2026-11-24 (newest): jobs froze after "Initializing Port ..." (dump, drive 1 tile); live sensor telemetry
+## 2026-11-24 (newest): live sensor graphs; code review fixes
+
+User: show the sensors in real time when testing by hand (line detection, distance) without slowing things
+down; how fast does the dashboard update during Phase 1 / 2; review the whole codebase for bugs.
+- Live graphs: every sensor card has a 10 s graph of every reading (`/api/stream`, server-sent events, 25
+  batches/s), thresholds drawn (LINE_THRESHOLD + suggested; WALL_THRESHOLD_CM + FORWARD_STOP_CM), readings past
+  them orange; the big number / LINE / HOUSE tag follow the stream. No job: the dashboard reads the 3 sensors
+  50 times/s (`--sensor-hz`). During a job: every reading the robot code takes (drive loop near lines: ~50/s in
+  the sim, more on the robot), and the job's telemetry thread reads any port the code hasn't read for 0.05 s
+  (so >= 20/s; sim: `World.color_red/us_cm(peek=True)`, no sim time, own noise). Capped at 250/s per port.
+  `/api/state` dropped its sparkline history (3.4 kB per poll).
+- Dashboard took the job's UDP telemetry only 6 times/s (tied to the map redraw): now every 0.03 s, map still
+  redrawn at most 6/s. Sample -> page push: median 17 ms during a job (sim), 11 ms idle.
+- Review fixes: dashboard started in the background ignored Ctrl-C / `pkill -INT` (inherited SIG_IGN; now
+  restored); `TILE_X_MIN, TILE_X_MAX = -1, 7` one-line tuples were invisible to the dashboard and its Constants
+  panel (split, one per line); auto-tuner spin / back-off loops had no time limit.
+- Checked: sim bench 10/10, tuner within 0.4 %, 1t n1 147/150 (P1 69 / P2 91, clearance 0.25, unchanged,
+  `sim/session/lab_nov22/live_graphs.json`); real path with the dummy BrickPi: tile / dump / turn / scan, dashboard
+  real mode streams 50/s idle, 20/s in a job; page JS: `node --check` + a fake-DOM run of render / graphs.
+  Not seen in a real browser yet.
+
+## 2026-11-24: jobs froze after "Initializing Port ..." (dump, drive 1 tile); live sensor telemetry
 
 User: the dump and "drive 1 tile" buttons (maybe others) printed the initialisation lines and then froze; how
 often does the dashboard update the sensors (colour / ultrasonic looked slow while advancing and by hand)?

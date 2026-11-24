@@ -30,7 +30,7 @@ def _robot_wiring(path=os.path.join(os.path.dirname(os.path.dirname(os.path.absp
     """Ports, drive polarity and nominal geometry straight from snowplow_core.py (not imported: run_sim imports it
     only after the world exists), so the sim follows the robot's wiring."""
     want = {"LEFT_DRIVE_PORT": "B", "RIGHT_DRIVE_PORT": "C", "TURRET_PORT": "A", "ROLLER_MOTOR_PORT": "D",
-            "LEFT_COLOR_PORT": 4, "RIGHT_COLOR_PORT": 2, "DRIVE_POLARITY": -1, "SENSOR_SPACING": 12.0,
+            "LEFT_COLOR_PORT": 4, "RIGHT_COLOR_PORT": 2, "ULTRASONIC_PORT": 3, "DRIVE_POLARITY": -1, "SENSOR_SPACING": 12.0,
             "TRACK_WIDTH": 12.0, "WHEEL_RADIUS": 2.10}
     try:
         for node in ast.parse(open(path).read()).body:
@@ -111,6 +111,7 @@ class World:
                  wheel_radius=None, track_width=None, phase2_side_us=None, dark_pompoms=False, table=None):
         """table: (x_min, x_max, y_min, y_max) in tiles (sim/maps.py), default one 9 x 5 table."""
         self.rng = random.Random(seed)
+        self.peek_rng = random.Random(seed + 7919)    # peek=True reads (dashboard graphs): never shift self.rng
         sensor_spacing = float(WIRING["SENSOR_SPACING"]) if sensor_spacing is None else sensor_spacing
         wheel_radius = float(WIRING["WHEEL_RADIUS"]) if wheel_radius is None else wheel_radius
         track_width = float(WIRING["TRACK_WIDTH"]) if track_width is None else track_width
@@ -295,8 +296,11 @@ class World:
         self.motors[port].pos = 0.0
 
     # ------------------------------------------------------------ sensors
-    def color_red(self, port):
-        self.charge()
+    def color_red(self, port, peek=False):
+        """peek: a read from outside the robot code (dashboard): costs no time, own noise, same answer."""
+        if not peek:
+            self.charge()
+        rng = self.peek_rng if peek else self.rng
         lat = self.color_ports[port]
         px, py = self.to_world(lat, self.sensor_offset)
         if not (self.table[0] <= px <= self.table[1] and self.table[2] <= py <= self.table[3]):
@@ -309,7 +313,7 @@ class World:
                     on_line = True
                     break
         base = 9.0 if on_line else 58.0
-        return max(0, base + self.rng.gauss(0, 2.5 * self.noise))
+        return max(0, base + rng.gauss(0, 2.5 * self.noise))
 
     def _us_origin_dir(self):
         if self.phase == 1:
@@ -349,18 +353,20 @@ class World:
                         best = tmin
         return best
 
-    def us_cm(self, port):
-        self.charge()
+    def us_cm(self, port, peek=False):
+        if not peek:
+            self.charge()
+        rng = self.peek_rng if peek else self.rng
         od = self._us_origin_dir()
         if od is None:
             return 255.0
-        if self.rng.random() < 0.02 * self.noise:
+        if rng.random() < 0.02 * self.noise:
             return 255.0                                   # missed echo
         ox, oy, heading = od
         hits = [self._ray(ox, oy, heading + a) for a in (-7, -3.5, 0, 3.5, 7)]
         hits = [h for h in hits if h is not None and h < 255]
-        if self.rng.random() < 0.01 * self.noise:          # ghost echo (multipath, the other sensor's ping)
-            return round(self.rng.uniform(3.0, min(hits) if hits else 80.0), 1)
+        if rng.random() < 0.01 * self.noise:               # ghost echo (multipath, the other sensor's ping)
+            return round(rng.uniform(3.0, min(hits) if hits else 80.0), 1)
         if not hits:
             return 255.0
-        return round(max(3.0, min(hits) + self.rng.gauss(0, 0.6 * self.noise)), 1)
+        return round(max(3.0, min(hits) + rng.gauss(0, 0.6 * self.noise)), 1)

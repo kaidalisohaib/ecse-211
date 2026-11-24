@@ -158,8 +158,10 @@ EST_HOME_STEP_SEC = 5.0       # Tile (0,0) centre -> origin intersection
 # Table size in tiles (tiles are named by their lower-left intersection). One table: 9 x 5 tiles, X -1..7,
 # Y -1..3, origin one tile in from the lower-left corner. Two tables side by side: TILE_X_MAX = 16; one above
 # the other: TILE_Y_MAX = 8. Keep the MINs at -1 (the origin stays at the lower-left).
-TILE_X_MIN, TILE_X_MAX = -1, 7
-TILE_Y_MIN, TILE_Y_MAX = -1, 3
+TILE_X_MIN = -1                # one per line: the dashboard (and its Constants panel) only reads NAME = value
+TILE_X_MAX = 7
+TILE_Y_MIN = -1
+TILE_Y_MAX = 3
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 CALIBRATION_FILE = os.path.join(_HERE, "calibration_params.json")

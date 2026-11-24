@@ -100,11 +100,14 @@ def drive_encoder_distance(cm, wheel_radius, dps):
     target_deg = abs(cm) / wheel_radius * 180.0 / math.pi
     l0, r0 = get_motor_positions()
     set_drive_dps(dps, dps)
-    while True:
+    t0, limit = time.time(), 3.0 + 2.0 * target_deg / max(1.0, abs(dps))   # wheels blocked: give up, don't hang
+    while time.time() - t0 < limit:
         l, r = get_motor_positions()
         if (abs(l - l0) + abs(r - r0)) / 2.0 >= target_deg:
             break
         time.sleep(0.005)
+    else:
+        print(f"    [TUNER] the wheels didn't turn {target_deg:.0f} deg in {limit:.0f} s (blocked? drive ports?)")
     stop_drive()
     time.sleep(0.15)
 
@@ -171,10 +174,14 @@ def measure_track_width(wheel_radius, left_scale, right_scale, direction="CW", t
     # Open-loop spin to ~350 deg using the seed track width.
     target_wheel_deg = (track_guess / (2.0 * wheel_radius)) * 350.0
     set_drive_dps(sign * 90, -sign * 90)
+    t0, limit = time.time(), 3.0 + 2.0 * target_wheel_deg / 90.0
     while True:
         l, r = get_motor_positions()
         if (abs(l - l0) + abs(r - r0)) / 2.0 >= target_wheel_deg:
             break
+        if time.time() - t0 > limit:
+            stop_drive()
+            raise RuntimeError(f"the spin didn't finish in {limit:.0f} s (wheels blocked, or the drive ports are wrong)")
         time.sleep(0.005)
     stop_drive()
     time.sleep(0.2)

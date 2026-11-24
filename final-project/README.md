@@ -12,6 +12,18 @@ The page shows every motor and sensor live. From it you can:
 - answer the robot's questions;
 - press STOP.
 
+## How fast the page updates
+
+| What | Rate |
+|---|---|
+| Sensor graphs and numbers, nothing running (testing by hand) | every reading, 50 per second (`--sensor-hz`) |
+| Sensor graphs during a job (Phase 1 / 2, bench tests) | every reading the robot code takes (about 50 to 100 per second near grid lines), at least 20 per second |
+| Motor cards, battery | 10 per second |
+| Map | redrawn up to 6 times a second (the robot sends its pose 15 times a second) |
+
+A reading reaches the page about 20-50 ms after it is taken (wifi included). The ultrasonic itself only takes a
+new measurement every so often: bench test 3 measures how often.
+
 ## Where to change things
 
 Every setting is a `NAME = value` line near the top of one of three files. You can edit the file, or use the

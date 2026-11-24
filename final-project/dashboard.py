@@ -50,7 +50,10 @@ SIM_DIR = os.path.join(HERE, "sim")
 CAL_FILE = os.path.join(HERE, "dashboard_colour_cal.json")
 SKIP_SCRIPTS = {"dashboard.py", "visualizer.py"}
 STALE_SEC = 0.5                    # a job's sensor value older than this is shown as "last read N s ago"
-HIST_LEN = 100                     # samples kept per sensor for the sparkline (10 s at 10 Hz)
+TRACE_KEEP_SEC = 10.0              # the live sensor graphs show this much (every reading, see /api/stream)
+STREAM_SEC = 0.04                  # /api/stream sends new readings this often (25 times a second)
+POLL_SEC = 0.03                    # the robot's telemetry (UDP) is taken in this often: cards and graphs stay current
+DRAW_SEC = 1.0 / 6.0               # the map is redrawn at most this often (drawing is the costly part)
 MOTOR_FLAGS = {1: "LOW BATTERY (motors off)", 2: "OVERLOADED"}
 DEADMAN_SEC = 0.35                 # hand driving stops this long after the last "still holding"
 MAX_DRIVE_DPS = 500
@@ -76,7 +79,8 @@ def read_constants(path=os.path.join(HERE, "snowplow_core.py")):
             "ROLLER_MOTOR_PORT": "D", "LEFT_COLOR_PORT": 4, "RIGHT_COLOR_PORT": 2,
             "ULTRASONIC_PORT": 3, "LINE_THRESHOLD": 30, "DRIVE_POLARITY": -1, "ROLLER_SWEEP_DPS": 900,
             "ROLLER_SWEEP_POWER": None, "DUMP_PLUS": None, "DUMP_MINUS": "BACK",
-            "TILE_X_MIN": -1, "TILE_X_MAX": 7, "TILE_Y_MIN": -1, "TILE_Y_MAX": 3}
+            "TILE_X_MIN": -1, "TILE_X_MAX": 7, "TILE_Y_MIN": -1, "TILE_Y_MAX": 3,
+            "WALL_THRESHOLD_CM": 25.0, "FORWARD_STOP_CM": 45.0}
     try:
         tree = ast.parse(open(path).read())
         for node in tree.body:
@@ -220,6 +224,19 @@ class RealHardware:
     def release(self):
         self.sensors = {}
 
+    def sensor_value(self, port):
+        """One reading for the live graph (value only, no status read): red %, mean RGB, or cm. None = no data."""
+        s = self.sensors.get(port)
+        if s is None:
+            return None
+        try:
+            v = s.get_value()
+        except Exception:
+            return None
+        if isinstance(v, (list, tuple)):
+            return sum(float(a) for a in v[:3]) / 3.0 if len(v) >= 3 else None
+        return None if v is None else float(v)
+
     def battery(self):
         try:
             return round(float(self.brick.BP.get_voltage_battery()), 2)
@@ -351,18 +368,32 @@ class SimHardware:
         m = self.w.motors[port]
         return {"flags": 0, "power": None, "enc": int(round(m.pos)), "dps": int(round(m.vel))}
 
+    def _read(self, fn, port):
+        """A world sensor read that costs no simulated time (the dashboard reads 50 times a second)."""
+        return fn(port, peek=True)
+
+    def sensor_value(self, port):
+        kind = self.roles.get(port, (None,))[0]
+        with self.lock:
+            if kind == "colour":
+                red = self._read(self.w.color_red, port)
+                return red if self.colour_mode == "red" else red * 6.0 * (1.0 + 1.04 + 0.92) / 3.0
+            if kind == "us":
+                return float(self._read(self.w.us_cm, port))
+        return None
+
     def sensor(self, port):
         kind = self.roles.get(port, (None,))[0]
         with self.lock:
             if kind == "colour":
-                red = self.w.color_red(port)
+                red = self._read(self.w.color_red, port)
                 if self.colour_mode == "red":
                     return {"status": "VALID_DATA", "value": round(red, 1)}
                 # The simulator only models reflected red; fake a neutral RGB from it.
                 rgb = [max(0.0, red * 6.0 * f + self.rng.gauss(0, 4)) for f in (1.0, 1.04, 0.92)]
                 return {"status": "VALID_DATA", "rgb": [round(a, 1) for a in rgb]}
             if kind == "us":
-                return {"status": "VALID_DATA", "value": round(self.w.us_cm(port), 1)}
+                return {"status": "VALID_DATA", "value": round(self._read(self.w.us_cm, port), 1)}
         return {"status": "NOT_SET_UP"}
 
     def set_dps(self, port, dps):
@@ -442,7 +473,11 @@ class Hub:
         self.released = False          # user pressed "Release hardware"
         self.scripts = []              # robot scripts not started by us
         self.owned = False             # sensors set up by us and safe to read
-        self.hist = {p: deque(maxlen=HIST_LEN) for p in (1, 2, 3, 4)}
+        # Live graphs: every sensor reading, (seq, time, port, value), from the dashboard's own reads (no job) or
+        # a job's telemetry. /api/stream hands them to the page as they come.
+        self.trace = deque(maxlen=12000)
+        self.trace_seq = 0
+        self.trace_cv = threading.Condition()
         self.snapshot = b"{}"
         self.n = 0
         self._message, self.message_t = "", 0.0
@@ -473,6 +508,33 @@ class Hub:
         self.tele = (time.time(), ev)
         if self.job and ev.get("phase") in (1, 2):
             self.phase = int(ev["phase"])
+
+    def push_trace(self, samples):
+        """samples: [(time, port, value)] in time order."""
+        if not samples:
+            return
+        with self.trace_cv:
+            for t, p, v in samples:
+                self.trace_seq += 1
+                self.trace.append((self.trace_seq, t, p, v))
+            self.trace_cv.notify_all()
+
+    def trace_since(self, seq, wait):
+        """(newest seq, [(seq, t, port, value)] newer than seq), waiting up to `wait` s for something new.
+        seq None: the last TRACE_KEEP_SEC s (a page that just connected)."""
+        with self.trace_cv:
+            if seq is not None and seq > self.trace_seq:
+                seq = None                         # numbers from before a dashboard restart
+            if seq is not None and self.trace_seq <= seq:
+                self.trace_cv.wait(wait)
+            out = []
+            t_min = time.time() - TRACE_KEEP_SEC
+            for item in reversed(self.trace):
+                if (seq is not None and item[0] <= seq) or (seq is None and item[1] < t_min):
+                    break
+                out.append(item)
+            out.reverse()
+            return self.trace_seq, out
 
     def on_meta(self, ev):
         """A running job announced which hardware it set up (the demo switches from 1 to 2 halfway)."""
@@ -595,9 +657,7 @@ class Hub:
         if cmd == "colour_mode" and q.get("v") in ("red", "rgb"):
             with self.lock:
                 self.colour_mode = q["v"]
-                self.owned = False                 # sampler sets the sensors up again
-                for p in self.hist:
-                    self.hist[p].clear()
+                self.owned = False                 # sampler sets the sensors up again (the page clears its graphs)
             return {"ok": True}
         if cmd == "release":
             with self.lock:
@@ -957,7 +1017,8 @@ class Hub:
         except (AttributeError, OSError):
             pass
         period = 1.0 / self.args.hz
-        last_scan = 0.0
+        fast = min(period, 1.0 / max(1.0, self.args.sensor_hz))
+        last_scan = next_full = 0.0
         while True:
             t0 = time.time()
             if not self.hw.sim and t0 - last_scan >= 0.5:
@@ -976,10 +1037,26 @@ class Hub:
                         self.log("[DASH] that script finished: reading the ports again")
                     self.scripts = scripts
             try:
-                self._sample()
+                if t0 >= next_full:
+                    next_full = t0 + period
+                    self._sample()
+                self._sample_fast()
             except Exception as e:      # never die; show it
                 self.message = f"sampler error: {type(e).__name__}: {e}"
-            time.sleep(max(0.0, period - (time.time() - t0)))
+            time.sleep(max(0.0, fast - (time.time() - t0)))
+
+    def _sample_fast(self):
+        """Live graphs: one reading of each sensor (sensor_hz times a second) while the dashboard owns the ports."""
+        with self.lock:
+            if self.busy() or not self.owned:
+                return
+            now = round(time.time(), 3)
+            out = []
+            for port in sensor_roles(self.c):
+                v = self.hw.sensor_value(port)
+                if v is not None:
+                    out.append((now, port, round(v, 1)))
+        self.push_trace(out)
 
     def _sim_warnings(self):
         """Simulator, hand driving: say so when the robot touches a house or leaves the table."""
@@ -1039,11 +1116,6 @@ class Hub:
                             s["stale"] = age > STALE_SEC
                     if s.get("status") == "VALID_DATA":
                         self._interpret(port, kind, s)
-                # One history point per sample, so the sparkline keeps moving in time; None (a gap) when there
-                # is no fresh reading (stale job value, sensor error, nothing reading the port).
-                v = s.get("bright", s.get("value")) if s.get("status") == "VALID_DATA" and not s.get("stale") else None
-                self.hist[port].append(v)
-                s["hist"] = list(self.hist[port])
                 sensors[str(port)] = s
             job = self.job
             self.n += 1
@@ -1054,7 +1126,8 @@ class Hub:
                 "show_truth": self.show_truth,
                 "scripts": [{"pid": p, "name": n} for p, n in self.scripts], "released": self.released,
                 "battery": battery, "phase": self.phase, "colour_mode": self.colour_mode,
-                "line_threshold": self.c["LINE_THRESHOLD"], "belt_dps": self.c["ROLLER_SWEEP_DPS"],
+                "line_threshold": self.c["LINE_THRESHOLD"], "wall_threshold": self.c["WALL_THRESHOLD_CM"],
+                "forward_stop": self.c["FORWARD_STOP_CM"], "belt_dps": self.c["ROLLER_SWEEP_DPS"],
                 "belt_power": self.c["ROLLER_SWEEP_POWER"],
                 "dump_plus": self.c["DUMP_PLUS"], "dump_minus": self.c["DUMP_MINUS"],
                 "message": self.message if time.time() - self.message_t < 15 else "",
@@ -1189,7 +1262,7 @@ input.pt{width:44px;font-variant-numeric:tabular-nums}
 .meter s{position:absolute;top:-4px;bottom:-4px;width:2px;background:var(--warn)}
 .meter u{position:absolute;top:-4px;bottom:-4px;width:2px;background:var(--ok)}
 .sw{display:inline-block;width:16px;height:16px;border-radius:3px;vertical-align:middle;border:1px solid var(--line);margin-right:6px}
-svg.spark{width:100%;height:30px;display:block;margin-top:6px;background:linear-gradient(var(--line),var(--line)) 0 100%/100% 1px no-repeat}
+canvas.scope{width:100%;height:56px;display:block;margin-top:6px;background:var(--bg);border-radius:4px}
 #mapc{width:100%;display:block}
 #motors .card{min-height:120px}#sensors .card{min-height:172px}
 #msg{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:30;max-width:min(900px,92vw);background:var(--warn-bg);
@@ -1279,7 +1352,7 @@ svg.spark{width:100%;height:30px;display:block;margin-top:6px;background:linear-
 </div><div class="dbody" id="clist"></div>
 <div class="dfoot"><span id="ccount" class="dim">no changes</span><button id="csave" class="go" style="margin-left:auto">Save</button><button id="cdiscard">Discard</button></div></div>
 <script>
-const $=id=>document.getElementById(id);let S=null,fails=0;const HL=100;
+const $=id=>document.getElementById(id);let S=null,fails=0;
 // every request gives up after a few seconds: with flaky wifi the page recovers as soon as it is back
 function tfetch(u,o,ms){const c=new AbortController();const t=setTimeout(()=>c.abort(),ms||2500);
  return fetch(u,Object.assign({signal:c.signal},o||{})).finally(()=>clearTimeout(t));}
@@ -1378,15 +1451,51 @@ $('csave').onclick=async()=>{const ch=cchanged();const by={};for(const e of ch)(
 $('stepedit').onclick=()=>{const st=S&&S.steps[+$('step').value];openConsts(st&&st.sets.length?st.sets:null);};
 // ---- cards
 const f1=v=>v==null?'-':(+v).toFixed(1);
-// History is one point per dashboard sample (10 Hz), newest on the right; null = no fresh reading (drawn as a gap).
-function spark(h,lo,hi,marks){const ok=(h||[]).filter(v=>v!=null);if(!h||h.length<2)return'';
- lo=lo??(ok.length?Math.min(...ok):0);hi=hi??(ok.length?Math.max(...ok):1);if(hi-lo<1e-6)hi=lo+1;
- const y=v=>(26-24*(Math.min(hi,Math.max(lo,v))-lo)/(hi-lo)).toFixed(1);const off=HL-h.length;
- const segs=[];let cur=[];h.forEach((v,i)=>{if(v==null){if(cur.length)segs.push(cur);cur=[];}else cur.push((100*(i+off)/(HL-1)).toFixed(1)+','+y(v));});
- if(cur.length)segs.push(cur);
- const pts=segs.map(sg=>sg.length===1?sg[0]+' '+sg[0]:sg.join(' '));
- const mk=(marks||[]).filter(m=>m&&m[0]!=null).map(m=>`<line x1="0" x2="100" y1="${y(m[0])}" y2="${y(m[0])}" stroke="${m[1]}" stroke-dasharray="2 2" stroke-width=".8"/>`).join('');
- return `<svg class="spark" viewBox="0 0 100 28" preserveAspectRatio="none">${mk}${pts.map(p=>`<polyline fill="none" stroke="#4c8dff" stroke-width="1.5" stroke-linecap="round" vector-effect="non-scaling-stroke" points="${p}"/>`).join('')}</svg>`;}
+// ---- live sensor graphs: every reading, streamed by /api/stream (the dashboard's own reads at --sensor-hz, or
+// every read a running job takes), drawn on a 10 s window that scrolls with the dashboard's clock.
+const WIN=10,GAP=0.35,TR={},LV={};let srvOff=null,lastCM=null,lastDraw=0;
+function stream(){const es=new EventSource('/api/stream');
+ es.onmessage=e=>{const d=JSON.parse(e.data),loc=performance.now()/1000,off=d.t-loc;
+  srvOff=srvOff==null?off:Math.max(off,srvOff-0.002);      // network delay only makes d.t look older: keep the max
+  for(const [t,p,v] of d.s){(TR[p]=TR[p]||[]).push([t,v]);LV[p]=[t,v];}
+  for(const p in TR){const a=TR[p];let i=0;while(i<a.length&&a[i][0]<d.t-WIN-1)i++;if(i)a.splice(0,i);}};}
+const srvNow=()=>performance.now()/1000+(srvOff||0);
+function liveOf(p){const l=LV[p];return l&&srvOff!=null&&srvNow()-l[0]<0.6?l[1]:null;}
+const fmtUS=v=>v>=250?'No echo':f1(v)+'<span class="u">cm</span>',fmtRed=v=>f1(v)+'<span class="u">%</span>';
+function drawScope(cv,now){const p=cv.dataset.p,s=S&&S.sensors[p];if(!s)return;
+ const d=window.devicePixelRatio||1,W=cv.clientWidth,H=cv.clientHeight;if(!W||!H)return;
+ if(cv.width!==Math.round(W*d)||cv.height!==Math.round(H*d)){cv.width=Math.round(W*d);cv.height=Math.round(H*d);}
+ const c=cv.getContext('2d');c.setTransform(d,0,0,d,0,0);c.clearRect(0,0,W,H);
+ const tr=TR[p]||[],us=s.kind==='us',rgb=!us&&S.colour_mode==='rgb';
+ let lo=0,hi=100;
+ if(rgb){lo=Infinity;hi=-Infinity;for(const [t,v] of tr)if(t>=now-WIN){lo=Math.min(lo,v);hi=Math.max(hi,v);}
+  if(!isFinite(lo)){lo=0;hi=1;}if(hi-lo<5)hi=lo+5;}
+ const Y=v=>H-3-(H-6)*(Math.min(hi,Math.max(lo,v))-lo)/(hi-lo),X=t=>W*(1-(now-t)/WIN);
+ const th=us?S.wall_threshold:(rgb?null:S.line_threshold);
+ const marks=us?[[S.wall_threshold,'#f2b33d'],[S.forward_stop,'#8f979f']]:(rgb?[]:[[S.line_threshold,'#f2b33d'],[s.suggest,'#3fb27f']]);
+ c.lineWidth=1;c.setLineDash([3,3]);
+ for(const [v,col] of marks){if(v==null)continue;const y=Math.round(Y(v))+.5;c.strokeStyle=col;c.beginPath();c.moveTo(0,y);c.lineTo(W,y);c.stroke();}
+ c.setLineDash([]);c.lineWidth=1.6;c.lineJoin='round';c.lineCap='round';
+ // Orange where the code would say "line" (red below LINE_THRESHOLD) or "house" (cm below WALL_THRESHOLD_CM);
+ // grey for "no echo"; a gap of more than GAP s (nothing read) breaks the line.
+ const HOT='#f2b33d',colOf=v=>us&&v>=250?'#5c6168':(th!=null&&v<th?HOT:'#4c8dff');
+ let path=null,a=null;const flush=()=>{if(path){c.strokeStyle=path;c.stroke();path=null;}};
+ for(const b of tr){if(b[0]<now-WIN-0.5){a=b;continue;}
+  if(a&&b[0]-a[0]<=GAP){const col=colOf(a[1])===HOT||colOf(b[1])===HOT?HOT:colOf(b[1]);
+   if(col!==path){flush();path=col;c.beginPath();c.moveTo(X(a[0]),Y(a[1]));}c.lineTo(X(b[0]),Y(b[1]));}
+  else{flush();c.fillStyle=colOf(b[1]);c.fillRect(X(b[0])-1,Y(b[1])-1,2,2);}
+  a=b;}
+ flush();}
+function liveTick(ts){requestAnimationFrame(liveTick);if(document.hidden||!S||ts-lastDraw<33)return;lastDraw=ts;
+ const now=srvNow();document.querySelectorAll('canvas.scope').forEach(cv=>drawScope(cv,now));
+ document.querySelectorAll('[data-lv]').forEach(el=>{const p=el.dataset.lv,v=liveOf(p),s=S.sensors[p];if(v==null||!s)return;
+  el.innerHTML=s.kind==='us'?fmtUS(v):fmtRed(v);el.parentNode.classList.remove('dim');});
+ document.querySelectorAll('[data-lt]').forEach(el=>{const v=liveOf(el.dataset.lt);if(v==null)return;const ln=v<S.line_threshold;
+  el.textContent=ln?'LINE':'table';el.classList.toggle('hot',ln);});
+ document.querySelectorAll('[data-lw]').forEach(el=>{const v=liveOf(el.dataset.lw);if(v==null)return;const h=v<S.wall_threshold;
+  el.textContent=v>=250?'nothing':(h?'HOUSE':'open');el.classList.toggle('hot',h);});
+ document.querySelectorAll('[data-lm]').forEach(el=>{const v=liveOf(el.dataset.lm);if(v!=null)el.style.width=Math.max(0,Math.min(100,v))+'%';});}
+const scope=(p,txt)=>`<canvas class="scope" data-p="${p}"></canvas><div class="note">${txt}</div>`;
 function motorButtons(p,role,dis){const d=dis?'disabled':'';const B=(k,v,t,cls)=>`<button ${d} ${cls?`class="${cls}"`:''} data-mc="${k}" data-port="${p}" data-v="${v}">${t}</button>`;
  const jog=B('jog',-30,'&minus;30&deg;')+B('jog',30,'+30&deg;');
  if(role==='Dump'){const dp=S.dump_plus,dm=S.dump_minus;
@@ -1422,8 +1531,9 @@ function sensorCard(port,s,src){
  const st=s.status||'-';let stl=statusDot(st)+(STXT[st]||st);
  if(s.stale)stl=`<span class="dot off"></span>Last read by the job ${f1(s.age)} s ago`+(s.kind==='colour'?' (it only looks near grid lines)':'');
  if(st!=='VALID_DATA')return {head:h,body:`<div class="${st==='NOT_READ'?'dim':''}">${stl}</div>`};
- if(s.kind==='us')return {head:h,body:`<div class="big${s.stale?' dim':''}">${s.value>=250?'No echo':f1(s.value)+'<span class="u">cm</span>'}</div><div class="note">${stl}</div>`,
-  foot:spark(s.hist,0,100)+`<div class="note">Last 10 s, 0 to 100 cm</div>`};
+ if(s.kind==='us'){const hv=s.value<S.wall_threshold;
+  return {head:h,body:`<div class="big${s.stale?' dim':''}"><span data-lv="${port}">${fmtUS(s.value)}</span><span class="tag${hv?' hot':''}" data-lw="${port}">${s.value>=250?'nothing':(hv?'HOUSE':'open')}</span></div><div class="note">${stl}. The code calls it a house below <span class="warn">${S.wall_threshold}</span> cm.</div>`,
+  foot:scope(port,'Every reading, last 10 s, 0 to 100 cm. Orange line: WALL_THRESHOLD_CM; grey: FORWARD_STOP_CM.')};}
  const cal=s.cal||{};
  if(s.rgb){const [r,g,b]=s.rgb;const mx=Math.max(r,g,b,1);const css=`rgb(${(255*r/mx)|0},${(255*g/mx)|0},${(255*b/mx)|0})`;const j=s.judge;
   const jv=j?`<div class="meter"><i style="width:${Math.max(0,Math.min(100,j.f*100))}%"></i><s style="left:50%"></s></div>
@@ -1431,15 +1541,15 @@ function sensorCard(port,s,src){
   return {head:h,body:`<div class="kvs" style="align-items:center"><span class="sw" style="background:${css}"></span>${kv('R',f1(r))}${kv('G',f1(g))}${kv('B',f1(b))}</div>
    <div class="note">Raw RGB under the sensor's white light, 0 to about 1020 each${S.sim?' (made up in the simulator)':''}.</div>${jv}`,
    btns:src==='ports'?calButtons(port):'',
-   foot:`<div class="kvs">${kv('Table',cal.table?cal.table.join(' / '):'-')}${kv('Line',cal.line?cal.line.join(' / '):'-')}</div>${spark(s.hist,0,null)}`};}
+   foot:`<div class="kvs">${kv('Table',cal.table?cal.table.join(' / '):'-')}${kv('Line',cal.line?cal.line.join(' / '):'-')}</div>`+scope(port,'Brightness (mean of R, G, B), every reading, last 10 s')};}
  const th=S.line_threshold;const sug=s.suggest;
  const calTxt=(cal.red_table!=null||cal.red_line!=null)?kv('Table',f1(cal.red_table))+kv('Line',f1(cal.red_line))+(sug!=null?`<span class="kv good">Threshold<b class="good">${f1(sug)} &plusmn; ${f1(s.margin)}</b></span>`:'')
   :'<span class="note" style="margin:0">Hold it over the table, then a line, and press the buttons.</span>';
- return {head:h,body:`<div class="big${s.stale?' dim':''}">${f1(s.value)}<span class="u">%</span><span class="tag${s.line&&!s.stale?' hot':''}">${s.line?'LINE':'table'}</span></div>
-  <div class="meter" title="Reflected red, 0-100 %. Orange mark: LINE_THRESHOLD; green: suggested"><i style="width:${Math.max(0,Math.min(100,s.value))}%"></i><s style="left:${th}%"></s>${sug!=null?`<u style="left:${sug}%"></u>`:''}</div>
+ return {head:h,body:`<div class="big${s.stale?' dim':''}"><span data-lv="${port}">${fmtRed(s.value)}</span><span class="tag${s.line&&!s.stale?' hot':''}" data-lt="${port}">${s.line?'LINE':'table'}</span></div>
+  <div class="meter" title="Reflected red, 0-100 %. Orange mark: LINE_THRESHOLD; green: suggested"><i data-lm="${port}" style="width:${Math.max(0,Math.min(100,s.value))}%"></i><s style="left:${th}%"></s>${sug!=null?`<u style="left:${sug}%"></u>`:''}</div>
   <div class="note">${stl}. The code calls it a line below <span class="warn">${th}</span>.</div>`,
   btns:src==='ports'?calButtons(port)+(sug!=null&&Math.round(sug)!==th?`<button class="go" data-setthr="${Math.round(sug)}">Use ${Math.round(sug)} as LINE_THRESHOLD</button>`:''):'',
-  foot:`<div class="kvs">${calTxt}</div>${spark(s.hist,0,100,[[th,'#f2b33d'],[sug,'#3fb27f']])}`};}
+  foot:`<div class="kvs">${calTxt}</div>`+scope(port,'Every reading, last 10 s, 0 to 100 %. Orange: LINE_THRESHOLD; green: suggested.')};}
 let ptsBuilt=null,stepsBuilt=false,lastQ=null,qShown=0;
 function buildPts(){const sim=S.sim;const key=sim?'sim:'+S.sim_map:'real';if(ptsBuilt===key)return;ptsBuilt=key;
  const G='display:grid;grid-template-columns:62px 1fr 1fr;gap:4px 8px;align-items:center;font-size:12px';
@@ -1450,6 +1560,7 @@ function buildPts(){const sim=S.sim;const key=sim?'sim:'+S.sim_map:'real';if(pts
  $('pts').innerHTML=`<div style="${G}"><span class="lbl">Gate</span>${row('s1')}${row('s2')}<span class="lbl">Drop-off</span>${row('d1')}${row('d2')}</div>`+
   (d.saved?`<div class="note">Last used values (saved when Phase 1 starts).</div>`:`<div class="note warn">Sample-map values: type the TA's gate and drop-off before Phase 1.</div>`);}
 function render(){const s=S;const dis=!!s.busy;
+ if(s.colour_mode!==lastCM){if(lastCM!=null)for(const p in s.sensors)if(s.sensors[p].kind==='colour'){TR[p]=[];delete LV[p];}lastCM=s.colour_mode;}
  if(!stepsBuilt&&s.steps){$('step').innerHTML=s.steps.map((st,i)=>`<option value="${i}">${st.label}</option>`).join('');stepsBuilt=true;}
  const sst=s.steps&&s.steps[+$('step').value];put($('stepsets'),sst&&sst.sets.length?'Tunes '+sst.sets.map(n=>`<code>${n}</code>`).join(''):'');
  if(s.sim){$('simbar').style.display='';const sm=$('simmap'),mk=s.sim_maps.join(',');
@@ -1516,7 +1627,7 @@ function paint(fr){const d=window.devicePixelRatio||1;g.setTransform(d,0,0,d,0,0
   else if(k==='t'){const[_,x,y,s,col,sz,an,b]=c;const a=AN[an]||AN.nw;g.font=(b?'bold ':'')+Math.round(sz*1.3)+'px monospace';g.textAlign=a[0];g.textBaseline=a[1];g.fillStyle=col;g.fillText(s,x,y);}}}
 async function pollMap(){try{const r=await tfetch('/api/frame?n='+fn,{cache:'no-store'});if(r.status===200){const fr=await r.json();fn=fr.n;lastF=fr;paint(fr);}}catch(e){}
  setTimeout(pollMap,150);}
-size();poll();pollMap();
+size();poll();pollMap();stream();requestAnimationFrame(liveTick);
 </script></body></html>"""
 
 PAGE = PAGE.replace("__MAPW__", str(MAP_W)).replace("__MAPH__", str(MAP_H))
@@ -1577,6 +1688,8 @@ def make_server(hub, args, code, frames):
                     except ValueError:
                         since = 0
                     self._send(200, json.dumps(hub.console_since(since)).encode())
+                elif u.path == "/api/stream":
+                    self._stream()
                 elif u.path == "/api/frame":
                     n = q.get("n", ["-1"])[0]
                     if not frames["frame"] or n == str(frames["n"]):
@@ -1586,6 +1699,30 @@ def make_server(hub, args, code, frames):
                 else:
                     self._send(404, b"{}")
             except (BrokenPipeError, ConnectionResetError):
+                pass
+
+        def _stream(self):
+            """Server-sent events: every new sensor reading, [[time, port, value], ...], STREAM_SEC apart, plus
+            the dashboard's clock (the page draws "now" on its graphs). The browser reconnects by itself after a
+            wifi drop and says where it stopped (Last-Event-ID)."""
+            try:
+                seq = int(self.headers.get("Last-Event-ID", ""))
+            except ValueError:
+                seq = None
+            self.connection.settimeout(5.0)       # a vanished laptop can't block this thread for ever
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream")
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            try:
+                while True:
+                    seq, items = hub.trace_since(seq, 1.0)
+                    body = json.dumps({"t": round(time.time(), 3), "s": [[t, p, v] for _, t, p, v in items]},
+                                      separators=(",", ":"))
+                    self.wfile.write(f"id: {seq}\ndata: {body}\n\n".encode())
+                    self.wfile.flush()
+                    time.sleep(STREAM_SEC)
+            except OSError:                       # page closed, wifi gone (broken pipe, reset, timeout)
                 pass
 
         def do_POST(self):
@@ -1632,7 +1769,9 @@ def main():
     ap.add_argument("--port", type=int, default=8080, help="web port (default 8080)")
     ap.add_argument("--udp", type=int, default=5005, help="telemetry port the robot code sends to (default 5005)")
     ap.add_argument("--phase", type=int, choices=(1, 2), default=2, help="which hardware is on at start")
-    ap.add_argument("--hz", type=float, default=10.0, help="how often to read the ports")
+    ap.add_argument("--hz", type=float, default=10.0, help="how often to read the motors and battery (per s)")
+    ap.add_argument("--sensor-hz", type=float, default=50.0,
+                    help="how often to read the sensors for the live graphs while no job runs (per s)")
     ap.add_argument("--code", help="access code (default: random 4 digits, printed at start)")
     ap.add_argument("--no-code", action="store_true", help="no access code (default with --sim)")
     args = ap.parse_args()
@@ -1658,6 +1797,11 @@ def main():
     def apply(ev):                        # "hw" snapshots feed the cards, everything else the map
         if ev.get("k") == "hw":
             hub.on_hw(ev)
+        elif ev.get("k") == "sens":       # every sensor reading a job took: the live graphs
+            try:
+                hub.push_trace([(float(t), int(p), float(v)) for t, p, v in ev.get("s") or []])
+            except (TypeError, ValueError):
+                pass
         else:
             if ev.get("k") == "meta":
                 hub.on_meta(ev)
@@ -1702,6 +1846,9 @@ def main():
             pass
         hub.log("[DASH] the SSH session that started the dashboard closed: still running "
                 "(it keeps working; Ctrl-C there is gone, use STOP or `pkill -INT -f dashboard.py`)")
+    # Started in the background (`... &`, nohup, rc.local) a program inherits "ignore Ctrl-C", so `pkill -INT`
+    # (which the SIGHUP note below suggests) did nothing: take Ctrl-C back.
+    signal.signal(signal.SIGINT, signal.default_int_handler)
     for sig, fn in ((signal.SIGTERM, quit_on), (getattr(signal, "SIGHUP", None), keep_running)):
         try:
             if sig is not None:
@@ -1730,7 +1877,7 @@ def main():
                         player.state.apply(ev)
                 player.state.apply(hw.pose_event())
                 player.dirty = True
-            if player.dirty or now - last_draw > 1.0:
+            if (player.dirty and now - last_draw >= DRAW_SEC) or now - last_draw > 1.0:
                 st = player.state
                 saved = (st.logs, st.sim, st.truth, st.truth_trail)
                 st.logs = []                                    # the console has its own box
@@ -1746,7 +1893,7 @@ def main():
                 frames["n"] += 1
                 frames["frame"] = json.dumps({"n": frames["n"], "cmds": draw.cmds, "status": status,
                                               "w": scene.w, "h": scene.h}, separators=(",", ":")).encode()
-            time.sleep(1.0 / 6.0)
+            time.sleep(POLL_SEC)
     except KeyboardInterrupt:
         pass
     finally:
