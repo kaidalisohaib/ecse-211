@@ -37,12 +37,20 @@ class Motor:
         WORLD.motor_reset(self.port)
 
 
+def _status(port):
+    """VALID_DATA, or NO_DATA for a port listed in WORLD.unplugged (to test a missing sensor)."""
+    return "NO_DATA" if int(port) in getattr(WORLD, "unplugged", ()) else "VALID_DATA"
+
+
 class EV3ColorSensor:
     def __init__(self, port, mode=None):
         self.port = int(port)
 
     def get_red(self):
         return WORLD.color_red(self.port)
+
+    def get_status(self):
+        return _status(self.port)
 
 
 class EV3UltrasonicSensor:
@@ -51,6 +59,9 @@ class EV3UltrasonicSensor:
 
     def get_cm(self):
         return WORLD.us_cm(self.port)
+
+    def get_status(self):
+        return _status(self.port)
 
 
 class TouchSensor:

@@ -33,7 +33,7 @@ import math
 import os
 import statistics
 import time
-from utils.brick import EV3ColorSensor, EV3UltrasonicSensor, Motor, reset_brick, wait_ready_sensors
+from utils.brick import EV3ColorSensor, EV3UltrasonicSensor, Motor, reset_brick
 import vizlog
 
 # ==================== HARDWARE PORT CONFIGURATION ====================
@@ -236,12 +236,63 @@ def _read_drive_encoders():
     return DRIVE_POLARITY * float(raw_l), DRIVE_POLARITY * float(raw_r)
 
 
-def init_hardware(phase: int = 1):
-    """Initializes sensors, latches encoders, loads calibration. phase=1 enables the turret (TURRET_PORT)."""
+class SensorMissing(RuntimeError):
+    """A sensor the job needs sends no data (not plugged in, or the wrong port in the port settings)."""
+
+
+SENSOR_READY_TIMEOUT_SEC = 5.0   # an EV3 sensor sends data ~0.5-2 s after it is set up; none by then = not plugged in
+
+
+def wait_sensors_ready(need_colour: bool = True, need_us: bool = False, timeout: float = SENSOR_READY_TIMEOUT_SEC):
+    """
+    Waits (at most `timeout` s in all) for the colour sensors and the ultrasonic to send data, printing each
+    port's result. A port that never does is named in the console instead of hanging the program (the course's
+    wait_ready_sensors() waits forever, e.g. for an ultrasonic left unplugged with the Phase 2 hardware on).
+    Raises SensorMissing if a sensor this job needs (need_colour / need_us) is missing.
+    """
+    ports = [(LEFT_COLOR_PORT, "left colour", left_color, need_colour),
+             (RIGHT_COLOR_PORT, "right colour", right_color, need_colour),
+             (ULTRASONIC_PORT, "ultrasonic", us_sensor, need_us)]
+    t0 = time.time()
+    status, ready_at = {}, {}
+    while True:
+        for port, _, sensor, _ in ports:
+            if port in ready_at:
+                continue
+            try:
+                status[port] = str(sensor.get_status())
+            except Exception as e:      # SPI/brick error: report it, keep trying until the time is up
+                status[port] = f"error {type(e).__name__}"
+            if status[port] == "VALID_DATA":
+                ready_at[port] = time.time() - t0
+        if len(ready_at) == len(ports) or time.time() - t0 >= timeout:
+            break
+        time.sleep(0.02)
+    missing = []
+    for port, name, _, needed in ports:
+        if port in ready_at:
+            print(f"[INIT] S{port} {name}: ready ({ready_at[port]:.1f} s)")
+        else:
+            print(f"[INIT] S{port} {name}: NO DATA after {timeout:.0f} s (status {status.get(port)}): "
+                  f"check the cable is in S{port}" + ("" if needed else "; not needed for this job, carrying on"))
+            if needed:
+                missing.append(f"S{port} {name}")
+    if missing:
+        raise SensorMissing(f"no data from {', '.join(missing)}: plug it in (or fix the port in snowplow_core.py)")
+
+
+def init_hardware(phase: int = 1, strict: bool = True, need_us: bool | None = None):
+    """
+    Initializes sensors, latches encoders, loads calibration. phase=1 enables the turret (TURRET_PORT).
+    strict: stop (SensorMissing) if a needed sensor sends nothing: the colour sensors, and the ultrasonic when
+    need_us (default: Phase 1). strict=False only warns (small actions from the dashboard).
+    """
     global prev_left_deg, prev_right_deg, turret_zero_enc, turret_present, turret_angle
     global x, y, theta, travel_cm, SENSOR_OFFSET
     SENSOR_OFFSET = SENSOR_OFFSET_BY_PHASE.get(phase, SENSOR_OFFSET)
-    wait_ready_sensors(True)
+    if need_us is None:
+        need_us = phase == 1
+    wait_sensors_ready(need_colour=strict, need_us=strict and need_us)
     load_calibration_params()
 
     enc = None
@@ -492,10 +543,16 @@ def drive_straight_distance(distance_cm: float, forward: bool = True, hold_headi
     start_travel = travel_cm
     lock_heading = theta if hold_heading is None else (hold_heading % 360.0)
     t_start = time.time()
+    # Twice the time at the cruise speed, plus 3 s: wheels blocked or encoders not counting stop here, not never.
+    t_limit = 3.0 + 2.0 * distance_cm / max(1.0, math.radians(speed_dps) * WHEEL_RADIUS)
     while True:
         update_odometer()
         remaining = distance_cm - abs(travel_cm - start_travel)
         if remaining <= 0.0:
+            break
+        if time.time() - t_start > t_limit:
+            print(f"  [DRIVE] timeout after {t_limit:.1f} s: moved {distance_cm - remaining:.1f} of {distance_cm:.1f} cm "
+                  "(wheels blocked, or the encoders aren't counting: check the drive ports)")
             break
         mag = compute_trapezoidal_dps(time.time() - t_start, remaining, ceiling_dps=speed_dps)
         drive_with_heading_hold(mag if forward else -mag, lock_heading)
@@ -1603,7 +1660,7 @@ def dump_snow_payload(direction="+"):
         return
     d = dump_direction(where)
     vizlog.emit("dump", side={"RIGHT": 1, "LEFT": -1, "BACK": 0}[d], dir=d)
-    print(f"[DUMP] Motor A {sign * DUMP_TILT_DEG:+.0f} deg: bin pours {d.lower()}...")
+    print(f"[DUMP] Motor {DUMP_PORT} {sign * DUMP_TILT_DEG:+.0f} deg: bin pours {d.lower()}...")
     base = dump_motor.get_position() or 0
     dump_motor.set_limits(power=85, dps=300)
     full = base + sign * DUMP_TILT_DEG

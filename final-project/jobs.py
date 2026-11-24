@@ -133,8 +133,12 @@ def phase1_defaults():
 
 
 # ============================================================ child side
+TELEMETRY_SEC = 0.1             # job -> dashboard motor/sensor snapshots: 10 per second (the dashboard samples at 10 Hz)
+LIVE_READ_SEC = 0.15            # a sensor the robot code hasn't read for this long is read by the telemetry thread
+
+
 class Telemetry:
-    """Motor/sensor snapshots ("hw" events) to the dashboard, 5 per second, from a background thread."""
+    """Motor/sensor snapshots ("hw" events) to the dashboard, TELEMETRY_SEC apart, from a background thread."""
 
     def __init__(self, udp_port, read):
         self.addr = ("127.0.0.1", udp_port)
@@ -151,7 +155,7 @@ class Telemetry:
                 self.sock.sendto(json.dumps(ev, separators=(",", ":")).encode(), self.addr)
             except Exception:
                 pass
-            _real_sleep(0.2)
+            _real_sleep(TELEMETRY_SEC)
 
 
 CURRENT = {"phase": None}       # hardware the job uses now (sent with every "hw" snapshot; the demo switches)
@@ -197,6 +201,8 @@ def setup_sim(args, job):
         phase = 2 if job == "dump" else args.phase
     w = world_mod.World(boxes, seed=args.seed, noise=1.0, sensor_offset=-5.0, table=table_of(spec))
     w.phase = phase
+    # SNOWPLOW_SIM_UNPLUG=4 (or 1,4 ...): those sensor ports send no data, to test the "check the cable" path
+    w.unplugged = {int(p) for p in os.environ.get("SNOWPLOW_SIM_UNPLUG", "").split(",") if p.strip().isdigit()}
     if job == "autotune":
         w.x, w.y, w.th = 0.5 * T, T - 3.0 + 5.0, 0.0      # colour sensors (5 cm behind) 3 cm short of a line
     elif job in ("phase1", "phase2", "demo"):
@@ -260,27 +266,36 @@ def setup_real(args):
     import snowplow_core as core                 # the robot code owns the BrickPi from here on
     from utils import brick
     reads, read_t = {}, {}
-    ports = {id(core.left_color): core.LEFT_COLOR_PORT, id(core.right_color): core.RIGHT_COLOR_PORT}
-    for sensor in (core.left_color, core.right_color):
-        def get_red(_s=sensor, _orig=sensor.get_red):
-            v = _orig()
-            if v is not None:
-                reads[ports[id(_s)]] = v
-                read_t[ports[id(_s)]] = time.time()
-            return v
-        sensor.get_red = get_red
-    orig_cm = core.us_sensor.get_cm
+    # port -> the sensor's own read function. The robot code's reads are recorded as they happen; a port the
+    # code hasn't read for LIVE_READ_SEC (e.g. the colour sensors during "Drive 1 tile", which never looks for
+    # lines) is read by the telemetry thread itself, so the page always shows live values. Reading only returns
+    # the BrickPi's latest value (no ping, no mode change), so it doesn't disturb the code.
+    own_read = {core.LEFT_COLOR_PORT: core.left_color.get_red, core.RIGHT_COLOR_PORT: core.right_color.get_red,
+                core.ULTRASONIC_PORT: core.us_sensor.get_cm}
 
-    def get_cm():
-        v = orig_cm()
-        if v is not None:
-            reads[core.ULTRASONIC_PORT] = v
-            read_t[core.ULTRASONIC_PORT] = time.time()
-        return v
-    core.us_sensor.get_cm = get_cm
+    def recorder(port, orig):
+        def read():
+            v = orig()
+            if v is not None:
+                reads[port] = v
+                read_t[port] = time.time()
+            return v
+        return read
+    core.left_color.get_red = recorder(core.LEFT_COLOR_PORT, own_read[core.LEFT_COLOR_PORT])
+    core.right_color.get_red = recorder(core.RIGHT_COLOR_PORT, own_read[core.RIGHT_COLOR_PORT])
+    core.us_sensor.get_cm = recorder(core.ULTRASONIC_PORT, own_read[core.ULTRASONIC_PORT])
     motors = {p: brick.Motor(p) for p in "ABCD"}   # extra handles, read-only use
 
     def snapshot():
+        now = time.time()
+        for port, read in own_read.items():
+            if now - read_t.get(port, 0.0) > LIVE_READ_SEC:
+                try:
+                    v = read()
+                except Exception:
+                    v = None
+                if v is not None:
+                    reads[port], read_t[port] = v, now
         m = {}
         for p, mot in motors.items():
             st = mot.get_status()
@@ -373,7 +388,7 @@ def run_job(args):
             auto_tuner.main()
         elif job in ("tile", "turn", "dump", "scan"):
             phase = 1 if job == "scan" else args.phase
-            core.init_hardware(phase=phase)
+            core.init_hardware(phase=phase, strict=job == "scan")   # tile/turn/dump: a missing sensor only warns
             if w is not None:                       # simulator: start odometry where the robot really is
                 core.x, core.y, core.theta = w.x, w.y, w.th
             vizlog.start(phase, outline=core.ROBOT_OUTLINE[phase], us_fwd=core.US_FORWARD_OFFSET_CM,
@@ -398,6 +413,8 @@ def run_job(args):
     except KeyboardInterrupt:
         print("\n[JOB] stopped", flush=True)
     except EOFError as e:
+        print(f"\n[JOB] stopped: {e}", flush=True)
+    except core.SensorMissing as e:
         print(f"\n[JOB] stopped: {e}", flush=True)
     finally:
         signal.signal(signal.SIGINT, signal.SIG_IGN)   # a second STOP must not interrupt the clean-up

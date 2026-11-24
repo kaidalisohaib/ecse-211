@@ -24,7 +24,7 @@ import math
 import os
 import statistics
 import time
-from utils.brick import wait_ready_sensors, reset_brick
+from utils.brick import reset_brick
 import snowplow_core as core   # same ports, motor polarity and line threshold as the main code
 
 left_motor, right_motor = core.left_motor, core.right_motor
@@ -201,7 +201,7 @@ def main():
     print("*" * 65)
     print("   ECSE 211 GRID-LINE ODOMETRY CALIBRATOR")
     print("*" * 65)
-    wait_ready_sensors(True)
+    core.wait_sensors_ready(need_colour=True)     # never hangs: names a port that sends nothing
     try:
         radius, ls, rs = auto_tune_straight(num_tiles=2)
         time.sleep(1.0)

@@ -2,7 +2,29 @@
 
 Newest first. Group 13, ECSE 211 F26 final project.
 
-## 2026-11-23 (newest): bug sweep for the real robot (user at home, robot offline)
+## 2026-11-24 (newest): jobs froze after "Initializing Port ..." (dump, drive 1 tile); live sensor telemetry
+
+User: the dump and "drive 1 tile" buttons (maybe others) printed the initialisation lines and then froze; how
+often does the dashboard update the sensors (colour / ultrasonic looked slow while advancing and by hand)?
+- Cause (most likely; robot offline, not seen on it): `init_hardware` called the course's `wait_ready_sensors()`,
+  which waits forever for every sensor created, ultrasonic S4 included. A port that sends no data (ultrasonic
+  unplugged with the Phase 2 hardware, loose cable) hung the job right after its "Initializing Port" line.
+- Fix: `core.wait_sensors_ready()` waits at most `SENSOR_READY_TIMEOUT_SEC` (5 s) in all and prints each port
+  ("S4 ultrasonic: NO DATA after 5 s ... check the cable"). Phases / bench tests stop (`SensorMissing`, clean
+  "[JOB] stopped" line) if a sensor they need is missing: colours always, ultrasonic in Phase 1 (Phase 2 only if
+  `PHASE2_SIDE_US`). Tile / turn / dump only warn; scan needs the ultrasonic. Auto-tuner uses it too.
+- Also: `drive_straight_distance` (the "Drive 1 tile" button, origin moves) had no time limit; now 3 s + twice
+  the cruise time, with a "[DRIVE] timeout ... check the drive ports" line.
+- Telemetry: the job sent motor/sensor snapshots 5 times a second and only the values the robot code had read
+  itself ("Drive 1 tile" never reads the colour sensors, so the page showed old values). Now 10 per second
+  (`jobs.TELEMETRY_SEC`), and a sensor the code hasn't read for 0.15 s is read by the telemetry thread (the
+  BrickPi's latest value: no ping, no mode change). Without a job the dashboard reads the ports at 10 Hz
+  (`--hz`) and the page asks for them every ~0.1 s.
+- Sim: `SNOWPLOW_SIM_UNPLUG=4 python3 jobs.py --sim sample tile` tests a missing sensor. Bench sim 10/10,
+  1t n1 147/150 (P1 69 / P2 91 s, min clearance 0.25: unchanged, `sim/session/lab_nov22/sensor_wait.json`).
+  Real path with the dummy BrickPi: tile / dump / turn / scan finish; telemetry 34 snapshots in 3.9 s, age 0.
+
+## 2026-11-23: bug sweep for the real robot (user at home, robot offline)
 
 User: "check everything to make sure there are no more bugs because it slows things down a lot", and where to
 change ports / parameters (answered in README "Where to change things").

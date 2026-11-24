@@ -446,7 +446,7 @@ def run_phase2():
                                            if plan else "no edge-parallel approach, will pour from the tile centre"))
     input("Install Phase 2 hardware, place robot at Origin facing +Y, press Enter to start Phase 2...")
 
-    init_hardware(phase=2)
+    init_hardware(phase=2, need_us=PHASE2_SIDE_US is not None)
     core.FIXED_US_ANGLE = None if PHASE2_SIDE_US is None else 90.0 * PHASE2_SIDE_US
     vizlog.start(2, s1=m.get("s1"), s2=m.get("s2"), d1=m.get("d1"), d2=m.get("d2"),
                  dropoff=list(dropoff_tile), outline=core.ROBOT_OUTLINE[2], us_fwd=core.US_FORWARD_OFFSET_CM, us_face=core.US_FACE_CM,
