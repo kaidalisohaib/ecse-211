@@ -16,6 +16,7 @@ import builtins
 import contextlib
 import importlib
 import io
+import math
 import os
 import sys
 import tempfile
@@ -87,6 +88,35 @@ def write_calibration(w, path):
                    "TRACK_WIDTH": track, "TRACK_WIDTH_CW": track, "TRACK_WIDTH_CCW": track}, f)
 
 
+def pour_check(core, p2, spec, pours):
+    """Where the bin really was when it tipped, against the bucket beside the drop-off edge (d1-d2), from the true
+    pose: angle between the pour side and straight out over the edge, pour opening along the edge from the bucket
+    centre (DUMP_POINT_FORWARD_CM from the axle; BACK: DUMP_BACK_LIP_CM behind it), axle to the edge. None = no pour."""
+    if not pours:
+        return None
+    x, y, th, direction = pours[-1]
+    side = direction
+    if direction in ("+", "-"):
+        side = core.DUMP_PLUS if direction == "+" else core.DUMP_MINUS
+    side = core.dump_direction(side)
+    g = core.parse_gate_geometry(tuple(spec["d1"]), tuple(spec["d2"]))
+    outs = [c["heading"] for c in g["candidates"] if not core.is_tile_in_bounds(*c["first_tile"])]
+    if not outs:
+        return {"side": side}
+    o = math.radians(outs[0])
+    out_v, edge_v = (math.sin(o), math.cos(o)), (math.cos(o), -math.sin(o))
+    t = math.radians(th)
+    f, r = (math.sin(t), math.cos(t)), (math.cos(t), -math.sin(t))
+    pour_v = {"RIGHT": r, "LEFT": (-r[0], -r[1]), "BACK": (-f[0], -f[1])}[side]
+    k = -p2.DUMP_BACK_LIP_CM if side == "BACK" else p2.DUMP_POINT_FORWARD_CM
+    px, py = x + k * f[0], y + k * f[1]
+    mx, my = g["mid_cm"]
+    cos_a = max(-1.0, min(1.0, pour_v[0] * out_v[0] + pour_v[1] * out_v[1]))
+    return {"side": side, "angle_err": round(math.degrees(math.acos(cos_a)), 1),
+            "off_along": round((px - mx) * edge_v[0] + (py - my) * edge_v[1], 2),
+            "axle_to_edge": round((mx - x) * out_v[0] + (my - y) * out_v[1], 2), "n": len(pours)}
+
+
 def run_once(map_name, seed, noise, verbose, reposition=True, dark=False, p2_side_us=None, realtime=None,
              calibrated=True, intake="funnel", arcs=True, overrides=()):
     spec = get_map(map_name)
@@ -119,6 +149,13 @@ def run_once(map_name, seed, noise, verbose, reposition=True, dark=False, p2_sid
         import ast
         setattr(mods[mod], attr, ast.literal_eval(val))
     core.ROBOT_OUTLINE[2] = [tuple(p) for p in world_mod.FOOTPRINT_P2]
+    pours = []                                 # true pose at each tip of the bin (pour_check)
+    _dump = p2.dump_snow_payload
+
+    def watched_dump(direction="+"):
+        pours.append((w.x, w.y, w.th, direction))
+        return _dump(direction)
+    p2.dump_snow_payload = watched_dump
     if os.environ.get("SNOWPLOW_EXPLORE_MODE"):
         p1.EXPLORE_MODE = os.environ["SNOWPLOW_EXPLORE_MODE"]
     if calibrated:
@@ -175,6 +212,8 @@ def run_once(map_name, seed, noise, verbose, reposition=True, dark=False, p2_sid
         "p1_contacts": w.contacts[1], "p2_contacts": w.contacts[2], "offtable": len(w.offtable),
         "contact_log": w.contact_log, "log": out.getvalue(),
     })
+    if "error" not in res:
+        res["pour"] = pour_check(core, p2, spec, pours)
     return res
 
 

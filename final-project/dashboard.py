@@ -78,7 +78,7 @@ def read_constants(path=os.path.join(HERE, "snowplow_core.py")):
     want = {"LEFT_DRIVE_PORT": "B", "RIGHT_DRIVE_PORT": "C", "TURRET_PORT": "B", "DUMP_PORT": "A",
             "ROLLER_MOTOR_PORT": "D", "LEFT_COLOR_PORT": 4, "RIGHT_COLOR_PORT": 2,
             "ULTRASONIC_PORT": 3, "LINE_THRESHOLD": 30, "DRIVE_POLARITY": -1, "ROLLER_SWEEP_DPS": 900,
-            "ROLLER_SWEEP_POWER": None, "DUMP_PLUS": None, "DUMP_MINUS": "BACK",
+            "ROLLER_SWEEP_POWER": None, "DUMP_PLUS": None, "DUMP_MINUS": "LEFT",
             "TILE_X_MIN": -1, "TILE_X_MAX": 7, "TILE_Y_MIN": -1, "TILE_Y_MAX": 3,
             "WALL_THRESHOLD_CM": 25.0, "FORWARD_STOP_CM": 45.0}
     try:

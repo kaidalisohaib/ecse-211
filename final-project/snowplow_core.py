@@ -140,7 +140,7 @@ ROLLER_SWEEP_DPS = 900        # only used when ROLLER_SWEEP_POWER is None
 ROLLER_POWER_LIMIT = 85
 DUMP_TILT_DEG = 140           # Motor A rotation that tips the bin (lab 2026-11-22: -140 empties it)
 DUMP_PLUS = None              # Where the bin pours when motor A turns +: "RIGHT", "LEFT", "BACK" or None (bench test 9)
-DUMP_MINUS = "BACK"           # Where it pours when motor A turns - (the bin at the back tips backward).
+DUMP_MINUS = "LEFT"           # Where it pours when motor A turns - (user 2026-11-24: our robot always dumps on the left)
                               # Phase 2 parks for whichever of the two is quicker; set one to None to force the other.
 DUMP_HOLD_SEC = 1.2
 DUMP_SHAKES = 2               # after tipping: back DUMP_SHAKE_DEG toward rest and down again, this many times
@@ -1542,8 +1542,31 @@ def should_abort_for_time(phase_start_time: float, seconds_needed: float) -> boo
 DUMP_DIRECTIONS = ("RIGHT", "LEFT", "BACK")
 
 
+POUR_HOUSE_MARGIN_CM = 1.0    # a pour shifted toward a house along the edge stops with the robot this far from its line
+
+
+def pour_shift(dropoff_tile, final_heading, blocked, pour_fwd_cm) -> float:
+    """Side pour: where the axle stops along final_heading, in cm from the drop-off tile centre, so the pour
+    opening (pour_fwd_cm ahead of the axle, - = behind) is level with the bucket centre: -pour_fwd_cm. Cut short
+    when the tile it reaches into along the edge holds a house (the robot's front / rear stays
+    POUR_HOUSE_MARGIN_CM from that tile's line) or, behind, is off the table. Off the table ahead is fine: only
+    the front overhangs the side edge, the wheels stay on."""
+    want = -float(pour_fwd_cm)
+    if abs(want) < 0.5:
+        return want
+    sign = 1 if want > 0 else -1
+    t = tile_step(dropoff_tile, final_heading, sign)
+    if not is_tile_in_bounds(*t) and sign > 0:
+        return want
+    if is_tile_in_bounds(*t) and t not in blocked:
+        return want
+    fwd = [p[1] for p in ROBOT_OUTLINE[2]]
+    reach = max(fwd) if sign > 0 else -min(fwd)
+    return sign * min(abs(want), max(0.0, TILE_SIZE / 2.0 - reach - POUR_HOUSE_MARGIN_CM))
+
+
 def plan_dump_approach(dropoff_tile, outward_heading, blocked, sides=("RIGHT", "LEFT"),
-                       styles=("direct", "along")) -> list[dict]:
+                       styles=("direct", "along"), pour_fwd_cm=0.0, max_run_tiles=1) -> list[dict]:
     """
     Ways to end up on dropoff_tile with the pouring side toward the bucket (outward_heading points at it).
     RIGHT / LEFT (tray tips sideways, robot ends parallel to the table edge):
@@ -1551,6 +1574,15 @@ def plan_dump_approach(dropoff_tile, outward_heading, blocked, sides=("RIGHT", "
                 to be parallel, pour. Short, but the in-place turn swings the corners ~1.5 cm over the
                 table edge, and needs the neighbouring tile along the edge to be free.
       "along":  drive into the drop tile along the edge (from a neighbouring edge tile), already parallel.
+      "turn":   drive in along the edge the other way (from the next edge tile on the far side), turn 180 deg
+                in place, pour. For a robot that pours one side only when the "along" tile is off the table or
+                a house.
+      All put the pour opening (pour_fwd_cm ahead of the axle) level with the tile centre: the axle stops
+      "shift" cm past the centre along final_heading (pour_shift: cut short next to a house, which costs a
+      penalty of 3 s per cm the pour ends off the bucket centre).
+      max_run_tiles 2: "along" / "turn" also as a 2-tile last run along the edge ("via" = the tile between
+      pre_tile and the drop-off): the edge lane is reached before a turn in place, and a U-turn needed to line
+      up happens one tile further out.
     BACK (tray tips over the rear, robot ends with its back to the bucket, then reverses to the edge):
       "direct": drive in toward the bucket, turn 180 deg in place.
       "along":  drive in along the edge (either way), turn 90 deg in place.
@@ -1580,21 +1612,21 @@ def plan_dump_approach(dropoff_tile, outward_heading, blocked, sides=("RIGHT", "
             continue
         h_par = (o - 90) % 360 if side == "RIGHT" else (o + 90) % 360
         tilt = 1 if side == "RIGHT" else -1
-        if "along" in styles:
-            pre = tile_step(dropoff_tile, h_par, -1)
-            if is_tile_in_bounds(*pre) and pre not in blocked:
-                options.append({"style": "along", "side": side, "heading": h_par, "final_heading": h_par,
-                                "pre_tile": pre, "tilt_sign": tilt, "turns": 0})
+        shift = pour_shift(dropoff_tile, h_par, blocked, pour_fwd_cm)
+        common = {"side": side, "final_heading": h_par, "tilt_sign": tilt, "shift": shift,
+                  "penalty": 3.0 * abs(shift + pour_fwd_cm)}
+        for k in range(1, max(1, max_run_tiles) + 1):
+            for style, sign, heading, turns in (("along", -1, h_par, 0), ("turn", 1, (h_par + 180) % 360, 2)):
+                if style not in styles:
+                    continue
+                run = [tile_step(dropoff_tile, h_par, sign * j) for j in range(k, 0, -1)]
+                if all(is_tile_in_bounds(*t) and t not in blocked for t in run):
+                    options.append(dict(common, style=style, heading=heading, pre_tile=run[0], via=run[1:],
+                                        turns=turns, run_tiles=k))
         if "direct" in styles:
             pre = tile_step(dropoff_tile, o, -1)
-            behind = tile_step(dropoff_tile, h_par, -1)   # the axle backs up toward this tile to centre the pour
             if is_tile_in_bounds(*pre) and pre not in blocked:
-                room = is_tile_in_bounds(*behind) and behind not in blocked
-                # No room behind: pour from the tile centre, the pour point DUMP_POINT_FORWARD_CM off the
-                # bucket's centre (still over a 30 cm bucket). Only used when nothing else fits.
-                options.append({"style": "direct", "side": side, "heading": o, "final_heading": h_par,
-                                "pre_tile": pre, "tilt_sign": tilt, "turns": 1, "backup": room,
-                                "penalty": 0.0 if room else 30.0})
+                options.append(dict(common, style="direct", heading=o, pre_tile=pre, turns=1))
     return options
 
 

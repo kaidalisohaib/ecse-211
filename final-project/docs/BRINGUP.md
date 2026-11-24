@@ -65,7 +65,7 @@ if it changes the weight on the wheels.
 | `ORIGIN_ARCS` | core | leave / reach the origin on arcs instead of the diagonal step (saves ~5 s per phase); False if the arcs miss after bench 10 |
 | `US_SPACING_SEC` | core | time between ultrasonic samples (now 0.015); set to the ping period step 7 prints, so a median of 5 is 5 real pings |
 | `ROBOT_OUTLINE` | core | footprint corners per phase (lateral, forward) for the viewer; copy to `sim/world.py` footprints too |
-| `DUMP_POINT_FORWARD_CM` | p2 | tray opening ahead of the axle (centres the pour on the bucket) |
+| `DUMP_POINT_FORWARD_CM` | p2 | middle of the bin's pour opening ahead of the axle, − = behind (now −10, from the photos); centres the pour on the bucket |
 | `EDGE_LANE_SHIFT_CM` | p2 | how far toward the table edge to drive on the drop-off row (keep the wheels on the table) |
 
 ### Sensors and ports
@@ -95,7 +95,7 @@ if it changes the weight on the wheels.
 |---|---|---|---|
 | `ROLLER_SWEEP_POWER` | core | -50 (lab) | bench 8 (sign = direction); `None` = run at `ROLLER_SWEEP_DPS` |
 | `DUMP_TILT_DEG`, `DUMP_SHAKES`, `DUMP_SHAKE_DEG`, `DUMP_HOLD_SEC` | core | 140, 2, 50, 1.2 (lab: -140 then +50/-50 shakes) | bench 9 |
-| `DUMP_PLUS`, `DUMP_MINUS` | core | `None`, `"BACK"` | bench 9: where motor + / − pours (`"RIGHT"`, `"LEFT"`, `"BACK"`); `None` = can't tip that way |
+| `DUMP_PLUS`, `DUMP_MINUS` | core | `None`, `"LEFT"` | bench 9: where motor + / − pours (`"RIGHT"`, `"LEFT"`, `"BACK"`); `None` = can't tip that way |
 | `ARC_RADIUS_CM` | core | 14.5 | bench 10: brushes outside -> smaller, inside -> larger |
 | `ARC_KP_HEADING`, `ARC_K_RADIAL_DEG_PER_CM` | core | 4, 4 | bench 10 wobble / drift |
 | `CORNER_POKE_CM` | p2 | 17 | 0 turns it off; max = 30.48 - intake reach - 1.5 |

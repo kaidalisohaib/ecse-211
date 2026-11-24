@@ -50,7 +50,8 @@ DUMP_BACK_OVERHANG_CM = 2.0       # BACK: wanted overhang of that lip past the t
 DUMP_BACK_SUPPORT_CM = 8.0        # MEASURE (BACK only): axle to the rearmost ground contact (caster / skid)
 DUMP_BACK_EDGE_MARGIN_CM = 2.0    # BACK: that contact stays at least this far inside the table edge
 EDGE_LANE_SHIFT_CM = 3.0          # Drive this much closer to the table edge on the drop-off row (MEASURE wheel margin)
-DUMP_POINT_FORWARD_CM = 6.0       # MEASURE: pour opening ahead of the wheel axle (centres it on the bucket)
+DUMP_POINT_FORWARD_CM = -10.0     # MEASURE: middle of the bin's pour opening ahead of the wheel axle (- = behind):
+                                  # centres the pour on the bucket. Robot photos 2026-11-22: bin ~10 cm behind
 DROP_APPROACH_DPS = 220
 DROP_LANE_GAIN = 5.0              # last drop-off run: cross-track deg per cm (drive_run's default 1.5 needs ~40 cm)
 DROP_MAX_STEER_DEG = 15.0         # ...and its steering limit (default 6)
@@ -63,10 +64,12 @@ CORNER_POKE_CM = 0.0              # before each arc, sweep straight into the cor
                                   # Off since 2026-11-21: the funnel can't keep what it pokes at when backing out,
                                   # and it costs 6-12 s. Max = 30.48 - intake reach (9) - 1.5 cm to the far house.
 CORNER_POKE_SPARE_SEC = 8.0       # skip the poke unless this much time is spare
-DROP_STYLES = ("direct", "along")  # "direct" = drive in facing the bucket, turn 90 in place, pour;
-                                   # "along" = arrive along the edge already parallel. Cheapest is used.
+DROP_STYLES = ("direct", "along", "turn")  # "direct" = drive in facing the bucket, turn 90 in place, pour;
+                                   # "along" = arrive along the edge already parallel; "turn" = arrive along the
+                                   # edge the other way, turn 180 in place (side pours). Cheapest is used.
 ROLLER_ON_DURING_TRANSIT = True   # Keep the roller turning until the dump so nothing falls back out
 ROLLER_FLUSH_SEC = 0.5
+TURN_LANE_RUN_CM = 25.0           # "turn" drop-off: the last run is at least this long (reverses first if not)
 BACK_OUT_DPS = 220                # reversing straight out of the street when the watchdog cuts the sweep short
 BACK_OUT_SEC_PER_TILE = 4.6       # time estimate for that reverse (slower than EST_SEC_PER_TILE)
 
@@ -98,21 +101,34 @@ def finish_seconds(tile, plan, blocked, known) -> float:
     turn = core.EST_SEC_PER_TURN * plan.get("turns", 1 if plan["style"] == "direct" else 0)
     if plan.get("side") == "BACK":
         turn += 1.5                        # reversing to the edge
-    home = core.plan_home(plan["dropoff_tile"], blocked, known, plan["final_heading"], tight=TIGHT)
-    return (estimate_path_seconds(to_pre + [plan["dropoff_tile"]]) + turn + core.EST_DUMP_SEC
-            + estimate_path_seconds(home, plan["final_heading"]) + core.EST_HOME_STEP_SEC)
+    drop, h = tuple(plan["dropoff_tile"]), plan["final_heading"]
+    t_home = estimate_path_seconds(core.plan_home(drop, blocked, known, h, tight=TIGHT), h)
+    back = tile_step(drop, h, -1)
+    if drop in TIGHT and core.is_tile_in_bounds(*back) and back not in blocked and back not in TIGHT:
+        via_back = core.plan_home(back, blocked, known, h, tight=TIGHT)   # leave_dropoff may back out first
+        if via_back:
+            t_home = min(t_home, BACK_OUT_SEC_PER_TILE + estimate_path_seconds(via_back, h))
+    return (estimate_path_seconds(to_pre + list(plan.get("via", [])) + [plan["dropoff_tile"]]) + turn + core.EST_DUMP_SEC
+            + t_home + core.EST_HOME_STEP_SEC)
 
 
 def choose_dump_plan(from_tile, dropoff_tile, dropoff_heading, blocked, known):
-    options = plan_dump_approach(dropoff_tile, dropoff_heading, blocked, core.dump_directions(), DROP_STYLES)
+    options = plan_dump_approach(dropoff_tile, dropoff_heading, blocked, core.dump_directions(), DROP_STYLES,
+                                 DUMP_POINT_FORWARD_CM, max_run_tiles=2)
     best = None
     for opt in options:
         opt = dict(opt, dropoff_tile=dropoff_tile)
         cost = finish_seconds(from_tile, opt, blocked, known)
         cost += opt.get("penalty", 0.0)
-        if opt.get("turns") and tuple(dropoff_tile) in TIGHT:
-            cost += 1000.0                 # that option turns in place on the drop-off tile: last resort there
+        if opt.get("turns") and tuple(dropoff_tile) in TIGHT and opt["style"] != "turn":
+            # That option turns in place on the drop-off tile next to a house: last resort. A "turn" does its 180
+            # there on the edge lane, 3 cm from an inland house (TURN_LANE_RUN_CM), so it isn't one.
+            cost += 1000.0
         path = plan_path(from_tile, opt["pre_tile"], blocked, known, tight=TIGHT)
+        if path and len(path) >= 2 and (core.heading_between_adjacent_tiles(path[-2], path[-1])
+                                         - opt["heading"]) % 360 == 180:
+            # The way to pre_tile ends heading away from the drop-off (often through it): a U-turn in place there
+            cost += 2 * core.EST_SEC_PER_TURN + (1000.0 if tuple(opt["pre_tile"]) in TIGHT else 0.0)
         if path and (best is None or cost < best[0]):
             best = (cost, opt)
     return best[1] if best else None
@@ -126,7 +142,8 @@ def drop_runs(current, plan, blocked, known, heading):
     the line stops already shifted (ends), and an arc onto the line is sized to end on it (arc_radius_for): a
     short final run (often one tile) has no room to steer 3 cm sideways.
     """
-    path = plan_path(current, plan["pre_tile"], blocked, known, heading, TIGHT) + [plan["dropoff_tile"]]
+    path = (plan_path(current, plan["pre_tile"], blocked, known, heading, TIGHT) + list(plan.get("via", []))
+            + [plan["dropoff_tile"]])
     runs = compile_runs(path)
     h_last = runs[-1][0] if runs else 0
     # A plan that turns in place on the drop-off tile does it EDGE_LANE_SHIFT_CM toward the bucket from the
@@ -139,9 +156,12 @@ def drop_runs(current, plan, blocked, known, heading):
     elif plan["style"] == "direct":
         lane = shift_lat
         last_end = EDGE_LANE_SHIFT_CM
+    elif plan["style"] == "turn":                        # arrives facing away from final_heading, turns 180
+        lane = -EDGE_LANE_SHIFT_CM * plan["tilt_sign"]
+        last_end = -plan.get("shift", -DUMP_POINT_FORWARD_CM)
     else:
         lane = EDGE_LANE_SHIFT_CM * plan["tilt_sign"]      # + = right of the final heading
-        last_end = -DUMP_POINT_FORWARD_CM
+        last_end = plan.get("shift", -DUMP_POINT_FORWARD_CM)
     drop_line = core.tile_center_lateral(plan["dropoff_tile"], h_last)
     starts, t = [], current
     for h, n in runs:
@@ -187,16 +207,30 @@ def drive_to_dump_and_pour(current, plan, blocked, known, _tries=3):
     """
     Path to the pre-drop tile, then the last run into the drop-off tile, then pour.
     The axle has to end EDGE_LANE_SHIFT_CM closer to the edge than the tile centre, with the pour point
-    (DUMP_POINT_FORWARD_CM ahead of the axle) level with the tile centre along the edge.
-      along:  last run is parallel to the edge -> lane offset = edge shift, stop short by the pour point.
+    (DUMP_POINT_FORWARD_CM ahead of the axle, - = behind) level with the tile centre along the edge.
+      along:  last run is parallel to the edge -> lane offset = edge shift, stops that far short of / past the
+              centre.
       direct: last run heads at the bucket on the tile centre line, stops past the centre by the edge shift,
-              turns 90 deg in place, then backs up along the edge so the pour point is level with the centre.
+              turns 90 deg in place, then moves along the edge so the pour point is level with the centre.
     """
     path, runs, starts, lanes, ends, last_end = drop_runs(current, plan, blocked, known, core.theta)
     vizlog.emit("plan", path=vizlog.tiles(path))
     tile = current
     for i, (heading, n) in enumerate(runs):
         last = i == len(runs) - 1
+        if last and plan["style"] == "turn" and tuple(plan["dropoff_tile"]) in TIGHT:
+            # The 180 at the end needs the edge lane (on the centre line it passes 0.24 cm from an inland house).
+            # An arc onto this run (the street exit's, or one hemmed in by houses) can leave ~5 cm to reach it:
+            # reverse first so the run has TURN_LANE_RUN_CM.
+            core.update_odometer()
+            stop_at = core.tile_center_along(plan["dropoff_tile"], heading) + last_end
+            if stop_at - core.get_along(heading) < TURN_LANE_RUN_CM:
+                if abs(core.minimal_angle_diff(heading, core.theta)) > 10.0:
+                    turn_to(float(heading))        # drive_run would turn here first anyway
+                behind = tile_step(tile, heading, -1)
+                room = core.is_tile_in_bounds(*behind) and behind not in blocked   # else stop on the centre
+                back_out(tile, heading, lane_offset_cm=lanes[i], end_along_offset_cm=min(0.0, stop_at - TURN_LANE_RUN_CM
+                         - core.tile_center_along(tile, heading)) if room else 0.0)
         if last:
             # The last run is often one tile: steer harder so the lane offset is reached before the stop.
             res = drive_run(tile, heading, n, DROP_APPROACH_DPS, lane_offset_cm=lanes[i],
@@ -223,12 +257,15 @@ def drive_to_dump_and_pour(current, plan, blocked, known, _tries=3):
     if plan["side"] == "BACK":
         turn_to(float(plan["final_heading"]))
         back_to_edge(plan["dropoff_tile"], (plan["final_heading"] + 180) % 360)
-    elif plan["style"] == "direct":
+    elif plan["style"] in ("direct", "turn"):
         turn_to(float(plan["final_heading"]))
-        if plan.get("backup", True):
-            # Pour point is DUMP_POINT_FORWARD_CM ahead of the axle: move the axle that far back along the edge.
-            core.drive_straight_distance(abs(DUMP_POINT_FORWARD_CM), forward=DUMP_POINT_FORWARD_CM < 0,
-                                         hold_heading=plan["final_heading"], speed_dps=120)
+        # Pour point DUMP_POINT_FORWARD_CM ahead of the axle: put the axle plan["shift"] past the tile centre.
+        # Measured from where the turn left it ("direct" turns SPIN_SHIFT_CM away from a house beside the tile).
+        core.update_odometer()
+        h = plan["final_heading"]
+        off = core.tile_center_along(plan["dropoff_tile"], h) + plan.get("shift", 0.0) - core.get_along(h)
+        if abs(off) > 0.5:
+            core.drive_straight_distance(abs(off), forward=off > 0, hold_heading=h, speed_dps=120)
     stop_intake_roller()
     dump_snow_payload(plan["side"])
     # After a BACK pour the robot faces inland and turns in place next: stop EDGE_LANE_SHIFT_CM toward the table
@@ -267,13 +304,28 @@ def leave_dropoff(tile, heading, blocked, known, home_tiles):
     tile = tuple(tile)
     if tile not in TIGHT:
         return tile
-    best = None
-    for goal in home_tiles:
-        p = plan_path(tile, goal, blocked, known, heading, TIGHT)
-        if p and (best is None or len(p) < len(best)):
-            best = p
+
+    def way_home(start):
+        best = None
+        for goal in home_tiles:
+            p = plan_path(start, goal, blocked, known, heading, TIGHT)
+            if p and (best is None or len(p) < len(best)):
+                best = p
+        return best
+
+    best = way_home(tile)
     if best and (len(best) < 2 or core.heading_between_adjacent_tiles(best[0], best[1]) == int(heading) % 360):
-        return tile                        # the way home leaves straight ahead
+        # The way home leaves straight ahead. A one-side pour can leave the robot facing away from home on an
+        # edge lined with houses: that "straight ahead" may run to the first free tile and back. Backing out
+        # one tile to a tile it can turn on can be much shorter (sim random-9x10-35: 29 s -> ~10 s).
+        back = tile_step(tile, heading, -1)
+        if core.is_tile_in_bounds(*back) and back not in blocked and back not in TIGHT:
+            via_back = way_home(back)
+            if via_back and (BACK_OUT_SEC_PER_TILE + estimate_path_seconds(via_back, heading)
+                             < estimate_path_seconds(best, heading)):
+                print(f"[RETURN] {tile} has a house beside it: back to {back} before turning")
+                return back_out(back, heading)
+        return tile
     for step in (1, -1):
         nxt = tile_step(tile, heading, step)
         if core.is_tile_in_bounds(*nxt) and nxt not in blocked and (nxt not in TIGHT or step == -1):
@@ -383,13 +435,14 @@ def spin_safe(tile, blocked) -> bool:
     return all(tile_step(tile, h) not in blocked for h in (0, 90, 180, 270))
 
 
-def back_out(start_tile, heading, speed_dps=BACK_OUT_DPS):
+def back_out(start_tile, heading, speed_dps=BACK_OUT_DPS, lane_offset_cm=0.0, end_along_offset_cm=0.0):
     """Reverses along `heading` to start_tile's centre on the tile centre line, without turning (the way out of
-    a street when there's no room to turn round). Lane hold like drive_run's, with the steering sign flipped."""
+    a street when there's no room to turn round). Lane hold like drive_run's, with the steering sign flipped.
+    lane_offset_cm / end_along_offset_cm: hold that lane (+ = right of heading), stop that far past the centre."""
     heading = int(heading) % 360
     core.update_odometer()
-    u_goal = core.tile_center_along(start_tile, heading)
-    lane = core.tile_center_lateral(start_tile, heading)
+    u_goal = core.tile_center_along(start_tile, heading) + end_along_offset_cm
+    lane = core.tile_center_lateral(start_tile, heading) + lane_offset_cm
     t0 = time.time()
     vizlog.emit("back_out", tile=list(start_tile), h=heading)
     while True:
@@ -583,6 +636,10 @@ def run_phase2():
     if not ROLLER_ON_DURING_TRANSIT:
         stop_intake_roller()
 
+    if tuple(current) != tuple(sweep_end):
+        # The sweep was cut short (backed out): the plan was chosen for the street's end. A one-side pour may
+        # now be a U-turn away from it, next to a house: choose again from here.
+        plan = choose_dump_plan(current, dropoff_tile, dropoff_heading, blocked, known) or plan
     if plan is not None:
         print(f"\n[DROP-OFF] {current} -> {plan['pre_tile']} -> {dropoff_tile}")
         current = drive_to_dump_and_pour(current, plan, blocked, known)

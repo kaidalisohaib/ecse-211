@@ -2,7 +2,44 @@
 
 Newest first. Group 13, ECSE 211 F26 final project.
 
-## 2026-11-24 (newest): lab table photo (box houses, thin lines)
+## 2026-11-24 (newest): the robot dumps on the LEFT
+
+User: "the robot we have always dumps on the left" (the code assumed a back pour, guessed from the photos).
+- `DUMP_MINUS = "LEFT"` (motor A -140 empties it, lab 2026-11-22), `DUMP_PLUS = None`. Dashboard / bench 9 follow.
+- `DUMP_POINT_FORWARD_CM` +6 -> **-10** (photo estimate: the bin's middle ~10 cm behind the axle; MEASURE). With
+  +6 a left pour would have landed ~16 cm off the bucket centre (bucket half-width 15).
+- A one-side pour fixes the final heading on the drop-off tile, so Phase 2 got:
+  - "turn" drop-off style: drive in along the edge the other way, turn 180 on the edge lane, pour (for a drop
+    tile whose "along" side is off the table or a house). Before the 180 next to a house the last run must be
+    >= `TURN_LANE_RUN_CM` (25) to reach the edge lane: it reverses first if an arc left it ~5 cm.
+  - 2-tile last runs along the edge (`plan_dump_approach(max_run_tiles=2)`), so a needed U-turn happens one tile
+    further out, on a tile without a house beside it.
+  - `core.pour_shift`: the axle stops `-DUMP_POINT_FORWARD_CM` past the tile centre (bin behind = past), cut short
+    next to a house in the next edge tile (robot stays 1 cm from its line); 3 s penalty per cm off centre.
+    "direct" now moves to that point from wherever its turn left it (was a fixed distance: 3 cm off).
+  - U-turn at pre_tile (the way there ends facing away) costs 2 turns, +1000 next to a house.
+  - Drop-off plan chosen again when the watchdog backed out of the street (was planned for the street's end:
+    a U-turn next to a house, sim random-18x5-18 lost the robot).
+  - `leave_dropoff`: backs out one tile to turn there when that's quicker than "straight ahead" (facing away
+    from home on an edge lined with houses: sim random-9x10-35 return 29 s -> 10 s; P2 122 -> 104 s), and
+    `finish_seconds` counts that way home.
+- Sim: `run_sim` records the true pose when the bin tips (`pour`: angle to straight out over the edge, opening
+  along the edge from the bucket centre, axle to the edge); stress flags "pour off the bucket" (>15 deg or
+  >8 cm) and "no pour".
+- Results (`sim/session/lab_nov22/`, 1t noise 1, 150 boards):
+  | run | clean | touches | P2 median | pour off centre median / max | axle to edge |
+  |---|---|---|---|---|---|
+  | back pour, old code (`pour_back`) | 147 | 0 | 90.8 s | 0.3 / 3.5 cm | 9.6-10.6 |
+  | left, first try (`pour_left`) | 138 | 1 | 93.8 s | 0.2 / 11.8 cm (8 off the bucket) | 11.7-15.4 |
+  | left, final (`L_1t`) | 147 | 0 | 92.6 s | 0.2 / 5.0 cm | 11.8-12.9 |
+  Final also: box houses 147/150 (`L_box`), noise 2 97/100 (same as back pour, `B`/`L_n2`), all kinds n 40
+  (`L_all`): touches identical to the back pour (11, edge / 9x10-27), 18x5 23/40 (back 26), P2 +2 s median on
+  2-table boards. Back pour with the new code (`B_1t`) unchanged 147/150. Bench sim 10/10.
+- Still to measure on the robot: `DUMP_POINT_FORWARD_CM` (axle to the middle of the bin opening, - = behind),
+  `EDGE_LANE_SHIFT_CM` (does the left lip reach over the table edge? the wheels must stay on), and confirm
+  "left" = the robot's left looking forward (belt in front): the dashboard Dump button prints "bin pours left".
+
+## 2026-11-24: lab table photo (box houses, thin lines)
 
 User sent a photo of the lab table with the "houses" to check and adjust.
 - From the photo: houses are ULINE 10x10x10 in boxes (25.4 cm) on 30.48 cm tiles, 4-6 cm apart, not always

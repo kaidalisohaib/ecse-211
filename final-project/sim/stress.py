@@ -64,6 +64,11 @@ def problems(r, min_pompoms):
     for ph in (1, 2):
         if r.get(f"p{ph}_end_err", 0) > 3.0:
             out.append(f"P{ph} home error {r[f'p{ph}_end_err']:.1f} cm")
+    pour = r.get("pour")
+    if pour is None:
+        out.append("no pour")
+    elif "angle_err" in pour and (pour["angle_err"] > 15 or abs(pour["off_along"]) > 8):
+        out.append("pour off the bucket")
     got, total = (int(v) for v in r["pompoms"].split("/"))
     if total and got / total < min_pompoms:
         out.append(f"pom-poms {got}/{total}")

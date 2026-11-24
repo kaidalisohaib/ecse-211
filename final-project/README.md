@@ -38,7 +38,7 @@ dashboard's **Constants** panel, which writes the same line and keeps a backup i
 | Belt power, dump angle / direction / shakes | `snowplow_core.py`, "PHASE 2 INTAKE & DUMP SETTINGS" |
 | Time estimates, table size | `snowplow_core.py`, "TIME BUDGET" |
 | Phase 1 strategy (explore mode, street rules) | `phase1_mapping.py`, top |
-| Phase 2: back-pour distances (`DUMP_BACK_LIP_CM`, `DUMP_BACK_SUPPORT_CM`), edge lane, corner arcs | `phase2_snow_removal.py`, top |
+| Phase 2: where the bin's opening is (`DUMP_POINT_FORWARD_CM`), edge lane (`EDGE_LANE_SHIFT_CM`), corner arcs, back-pour distances (only for a bin that pours back) | `phase2_snow_removal.py`, top |
 
 After the auto-tuner runs, `calibration_params.json` (on the robot) overrides the wheel radius, wheel scales and
 track width; the Constants panel shows and edits those too. Constants edited on the robot are local changes to
