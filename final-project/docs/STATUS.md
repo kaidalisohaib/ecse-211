@@ -2,7 +2,46 @@
 
 Newest first. Group 13, ECSE 211 F26 final project.
 
-## 2026-11-24 (newest): shorter drop-off routes (turn in place next to a house, cruise the last run)
+## 2026-11-25 (newest): review of 5e43e7b (lab changes) + stop-and-square heading fix
+
+Pulled 5e43e7b (turret range +-110, stop-and-square at grid lines `LINE_SQUARE_MODE = "stop"`, `SENSOR_SKEW_DEG`,
+TRACK_WIDTH 13.45 / sensors -5 cm / spacing 14 measured, `STREET_RULES = False` + edge-street exit rule, origin
+tiles never houses, auto-tuner squares at both ends). Sim results, `sim/session/lab_nov22/` (vs `H_*` = c5d7637):
+- As pulled (`I_1t`, `I_box`): 1t 121/150 clean (was 147), 7 Phase 2 touch boards (was 0), 16 boards home > 3 cm
+  off, 2 off the table; box 120/150. P1 +8.4 s, P2 +5.0 s mean.
+- Isolated with `--set`: flying snaps instead (`I_fly`) 145/150, 0 touches; that plus turret +-90 and
+  `STREET_RULES = True` (`I_fly90sr`) 147/150 = identical to before. So:
+  - stop-and-square: ~+4 s per phase (a stop at every line) and all the touches / home errors;
+  - `STREET_RULES = False`: P1 +3.5 s mean, 2 more boards over 120 s (random-8, random-127);
+  - turret +-110: +0.4 s in the sim (no slack modelled, so the sim really points at 110).
+- All kinds, n 40, flying (`I_all_fly` vs `H_all`): **edge streets 8/40 -> 37/40 clean, wrong maps 33 -> 5**
+  (the teammate's edge rule works). New wrong map random-loose-17: the gate is on the table's top edge, the gate
+  check picked the wrong tile and the edge exit rule accepted a 2-tile "street" along the edge, so the one-tile
+  retry didn't catch it. 18x5 / 9x10 P1 +2 to +6 s median.
+- Auto-tuner sim (`sim/test_auto_tuner.py`, 5 seeds): radius and track within 0.23 %. Bench sim 10/10.
+
+**Bug (fixed): stop-and-square left the heading ~1.5 deg off, always the same way.** The first sensor coasts into
+the line while braking from line-crossing speed (sim 0.3-0.4 cm), the pivoting one stops at the near edge, and
+the code then set theta = heading as if square: 0.36 cm on the 14 cm bar = 1.5 deg, repeated at every square, so
+Phase 2 drifted 3 cm sideways per few tiles (random-149: lateral 0.2 -> 3.2 cm, then a house).
+- `_stop_and_square_line` keeps the same motions (brake, back up and re-approach if it coasted past, pivot the
+  other wheel) but takes the heading from the first sensor's depth into the line (odometry), not "square";
+  the hits use the midpoint between the last two looks (the line is seen up to one loop late at speed: the
+  remaining 0.5 deg bias). The nudge of the first wheel back onto the line is gone (it rotated the robot and the
+  rotation was then ignored). Heading error after a square: max 0.37 deg, mean ~0 (was 1.3-1.5 deg).
+- A first try (each wheel creeps to the line on its own) was square but slow and broke when braking hadn't
+  finished (a sensor rolled off the far side): P1 +33 s, 37 touch boards. Discarded.
+- Result (`K_1t`, `K_box`): 144/150 clean on both (was 121 / 120 as pulled), 0 touches, 0 home errors > 3 cm,
+  0 off the table; times unchanged vs as pulled (P1 +8.3 s, P2 +4.4 s vs `H`); pom-poms 83 % (1t) / 74 % (box)
+  vs 84 / 73 before. Left: the 5 P1 > 120 s boards (3 old + 2 from `STREET_RULES`) and random-44 P2 122 s (the
+  watchdog's estimates don't count a stop per line).
+- Flying snaps in the same sim: P1 / P2 ~4 s faster each, 145/150. Keep "stop" only if the robot needs it.
+
+Phase 1 "stops when unsure" (user question): the forward watch (median of 5 moving readings < `FORWARD_STOP_CM`
+45) stops one tile short, then confirms standing still (5 readings, +4 if they disagree); "no house" -> drives
+on. Sim: 7 such stops in 40 boards (beam +-7 deg there; the real one is wider).
+
+## 2026-11-24: shorter drop-off routes (turn in place next to a house, cruise the last run)
 
 User (sim screenshot, random-41361): the drop-off looped west / south / east and turned 180, "couldn't it have done
 a simple left turn from the exit with an offset gotten in the drop location, then turned in place?".

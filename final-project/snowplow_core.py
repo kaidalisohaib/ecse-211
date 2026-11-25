@@ -903,174 +903,156 @@ def _snap_along_single(heading: int, line_u: float, which: str, travel_since_hit
     _emit_snap(heading, line_u, "single")
 
 
-def _stop_and_square_line(heading: int, line_u: float, hit_l: bool, hit_r: bool) -> bool:
+def _stop_and_square_line(heading: int, line_u: float, hit_l: bool, hit_r: bool,
+                          seen_at: float | None = None) -> bool:
     """
-    Stops immediately when one colour sensor detects a grid line and pivots the other wheel
-    until the second colour sensor also detects the line, physically squaring the robot to
-    `heading` and snapping both heading and along-track position.
+    Stops when one colour sensor detects a grid line and pivots the other wheel until the second sensor also
+    detects it, which leaves the robot nearly square to `heading`, then snaps heading and along-track position.
+    The first sensor coasts into the line while the robot brakes, and the second stops at the line's near edge,
+    so the robot is not exactly square: the heading is taken from that coast (odometry), not assumed. Assuming
+    square left every pivot ~1.5 deg off (0.36 cm on the 14 cm bar, sim) and Phase 2 drifted into houses.
+    seen_at: travel_cm where the hit sensor(s) reached the line (default: now). A sensor checked every few
+    millimetres at line-crossing speed is seen up to that late, and the angle comes from the difference.
     """
     global theta, x, y
     update_odometer()
     theta_pre = theta
     travel_pre = travel_cm
-    t_hit_l = travel_cm if hit_l else None
-    t_hit_r = travel_cm if hit_r else None
+    sensors = {"L": left_color, "R": right_color}
+    seen_at = travel_cm if seen_at is None else seen_at
+    hit_at = {s: seen_at for s, h in (("L", hit_l), ("R", hit_r)) if h}   # travel when each sensor reached it
 
-    # Actively brake both drive motors while watching if the second sensor hits during stopping.
-    drive(0, 0)
-    t_brake = time.time()
-    while time.time() - t_brake < 0.08:
-        update_odometer()
-        if t_hit_l is None and get_color_red(left_color) < LINE_THRESHOLD:
-            t_hit_l = travel_cm
-        if t_hit_r is None and get_color_red(right_color) < LINE_THRESHOLD:
-            t_hit_r = travel_cm
-        time.sleep(0.005)
-    update_odometer()
-
-    # Case 1: Both sensors already detected the line at trigger or while braking.
-    if t_hit_l is not None and t_hit_r is not None:
-        first = "L" if t_hit_l <= t_hit_r else "R"
-        t_second = max(t_hit_l, t_hit_r)
-        gap = abs(t_hit_l - t_hit_r)
-        if _snap_heading_and_along(heading, line_u, first, gap):
-            er = math.radians(minimal_angle_diff(theta, heading))
-            set_along(heading, get_along(heading) + (travel_cm - t_second) * math.cos(er))
-            return True
-        _snap_along_single(heading, line_u, first, travel_cm - min(t_hit_l, t_hit_r))
-        return False
-
-    # Case 2: Only one sensor hit. Check BEFORE pivoting whether it coasted past the thin line while braking:
-    # if so, back both wheels just behind the line and re-approach slowly so it stops on the leading edge.
-    first = "L" if t_hit_l is not None else "R"
-    other_sensor = right_color if first == "L" else left_color
-    first_sensor = left_color if first == "L" else right_color
-
-    if get_color_red(first_sensor) >= LINE_THRESHOLD:
-        drive(-LINE_SQUARE_DPS, -LINE_SQUARE_DPS)
-        t_back = time.time()
-        tr0 = travel_cm
-        saw_line = False
-        while time.time() - t_back < 0.7 and abs(travel_cm - tr0) < 2.0:
+    def brake(sec):
+        drive(0, 0)                            # active brake; note a sensor that reaches the line meanwhile
+        t = time.time()
+        look = travel_cm
+        while time.time() - t < sec:
             update_odometer()
-            red = get_color_red(first_sensor)
-            if red < LINE_THRESHOLD:
-                saw_line = True
-            elif saw_line and red >= LINE_THRESHOLD + 5:
-                break
-            time.sleep(0.005)
-        drive(0, 0)
-        time.sleep(0.03)
-        update_odometer()
-        # Re-approach slowly until a sensor hits the leading edge (at LINE_SQUARE_DPS, coasting is < 0.1 cm).
-        drive(LINE_SQUARE_DPS, LINE_SQUARE_DPS)
-        t_re = time.time()
-        tr1 = travel_cm
-        re_l = re_r = False
-        while time.time() - t_re < 0.9 and abs(travel_cm - tr1) < 2.5:
-            update_odometer()
-            re_l = get_color_red(left_color) < LINE_THRESHOLD
-            re_r = get_color_red(right_color) < LINE_THRESHOLD
-            if re_l or re_r:
-                break
-            time.sleep(0.005)
-        drive(0, 0)
-        t_b2 = time.time()
-        while time.time() - t_b2 < 0.05:
-            update_odometer()
-            if not re_l and get_color_red(left_color) < LINE_THRESHOLD:
-                re_l = True
-            if not re_r and get_color_red(right_color) < LINE_THRESHOLD:
-                re_r = True
+            for s in "LR":
+                if s not in hit_at and get_color_red(sensors[s]) < LINE_THRESHOLD:
+                    hit_at[s] = 0.5 * (look + travel_cm)
+            look = travel_cm
             time.sleep(0.005)
         update_odometer()
-        if not (re_l or re_r):
-            return False
-        if re_l and re_r:
-            first = None
-        else:
-            first = "L" if re_l else "R"
-            other_sensor = right_color if first == "L" else left_color
-            first_sensor = left_color if first == "L" else right_color
 
-    if first is not None:
-        if first == "L":
-            drive(0, LINE_SQUARE_DPS)
-        else:
-            drive(LINE_SQUARE_DPS, 0)
+    brake(0.08)
 
-        turned = 0.0
-        prev_th = theta
-        t0 = time.time()
-        found = False
-        while time.time() - t0 < LINE_SQUARE_TIMEOUT_SEC:
-            update_odometer()
-            turned += minimal_angle_diff(theta, prev_th)
-            prev_th = theta
-            if get_color_red(other_sensor) < LINE_THRESHOLD:
-                found = True
-                break
-            if abs(turned) > MAX_SNAP_HEADING_DEG:
-                break
-            time.sleep(0.005)
-        drive(0, 0)
-        time.sleep(0.04)
-        update_odometer()
-
-        if not found:
-            # False trigger (e.g. pom-pom/seam) or missed line: undo the single-wheel pivot so heading isn't ruined.
-            if abs(turned) > 0.5:
-                if first == "L":
-                    drive(0, -LINE_SQUARE_DPS)
-                else:
-                    drive(-LINE_SQUARE_DPS, 0)
-                t_undo = time.time()
-                undone = 0.0
-                prev_th = theta
-                while time.time() - t_undo < LINE_SQUARE_TIMEOUT_SEC:
-                    update_odometer()
-                    undone += minimal_angle_diff(theta, prev_th)
-                    prev_th = theta
-                    if abs(undone) >= abs(turned):
-                        break
-                    time.sleep(0.005)
-                drive(0, 0)
-                time.sleep(0.04)
+    # Only one sensor hit and it coasted past the thin line while braking: back both wheels just behind the line
+    # and re-approach slowly (at LINE_SQUARE_DPS it coasts < 0.1 cm), so it stops on the leading edge.
+    if len(hit_at) == 1:
+        first = next(iter(hit_at))
+        if get_color_red(sensors[first]) >= LINE_THRESHOLD:
+            drive(-LINE_SQUARE_DPS, -LINE_SQUARE_DPS)
+            t_back = time.time()
+            tr0 = travel_cm
+            saw_line = False
+            while time.time() - t_back < 0.7 and abs(travel_cm - tr0) < 2.0:
                 update_odometer()
-            return False
-
-        # With sensors behind the axle (SENSOR_OFFSET < 0), straightening from a larger angle swings the first
-        # sensor slightly *behind* the line: nudge its wheel forward back onto the leading edge if needed.
-        if get_color_red(first_sensor) >= LINE_THRESHOLD:
-            if first == "L":
-                drive(LINE_SQUARE_DPS, 0)
-            else:
-                drive(0, LINE_SQUARE_DPS)
-            t_nudge = time.time()
-            tr2 = travel_cm
-            while time.time() - t_nudge < 0.5 and abs(travel_cm - tr2) < 0.8:
-                update_odometer()
-                if get_color_red(first_sensor) < LINE_THRESHOLD:
+                red = get_color_red(sensors[first])
+                if red < LINE_THRESHOLD:
+                    saw_line = True
+                elif saw_line and red >= LINE_THRESHOLD + 5:
                     break
                 time.sleep(0.005)
             drive(0, 0)
             time.sleep(0.03)
             update_odometer()
+            hit_at.clear()
+            drive(LINE_SQUARE_DPS, LINE_SQUARE_DPS)
+            t_re = time.time()
+            tr1 = travel_cm
+            while time.time() - t_re < 0.9 and abs(travel_cm - tr1) < 2.5 and not hit_at:
+                update_odometer()
+                for s in "LR":
+                    if get_color_red(sensors[s]) < LINE_THRESHOLD:
+                        hit_at[s] = travel_cm
+                time.sleep(0.005)
+            brake(0.05)
+            if not hit_at:
+                return False
 
-    # Both sensors now sit on line_u. If the left sensor leads the right by SENSOR_SKEW_DEG, the chassis is
-    # physically angled at `heading - SENSOR_SKEW_DEG`. Odometry tracked the pivot, so `delta` is the heading
-    # error that accumulated before this line: back-correct cross-track drift just like flying snaps do.
-    actual_heading = (heading - SENSOR_SKEW_DEG) % 360.0
-    delta = minimal_angle_diff(actual_heading, theta)
-    if abs(delta) <= MAX_SNAP_HEADING_DEG:
-        d = max(0.0, min(HEADING_BACKFIX_MAX_CM, travel_pre - _hdg_ref_travel)) * _hdg_ref_weight
-        tb, tt = math.radians(theta_pre), math.radians(theta_pre + delta)
-        x += d * (math.sin(tt) - math.sin(tb))
-        y += d * (math.cos(tt) - math.cos(tb))
-    theta = actual_heading
+    # Both sensors crossed while the robot drove straight or braked: the travel between the hits gives the angle.
+    if len(hit_at) == 2:
+        first = "L" if hit_at["L"] <= hit_at["R"] else "R"
+        t_second = max(hit_at.values())
+        if _snap_heading_and_along(heading, line_u, first, abs(hit_at["L"] - hit_at["R"])):
+            er = math.radians(minimal_angle_diff(theta, heading))
+            set_along(heading, get_along(heading) + (travel_cm - t_second) * math.cos(er))
+            return True
+        _snap_along_single(heading, line_u, first, travel_cm - min(hit_at.values()))
+        return False
+
+    # One sensor on the line: hold its wheel and pivot the other forward until the second sensor sees it.
+    first = next(iter(hit_at))
+    second = "R" if first == "L" else "L"
+    depth = max(0.0, travel_cm - hit_at[first])   # how far the first sensor went into the line (braking)
+    if first == "L":
+        drive(0, LINE_SQUARE_DPS)
+    else:
+        drive(LINE_SQUARE_DPS, 0)
+    turned = 0.0
+    prev_th = theta
+    t0 = time.time()
+    found = False
+    theta_det = u_det = 0.0
+    while time.time() - t0 < LINE_SQUARE_TIMEOUT_SEC:
+        update_odometer()
+        turned += minimal_angle_diff(theta, prev_th)
+        prev_th = theta
+        if get_color_red(sensors[second]) < LINE_THRESHOLD:
+            found = True
+            theta_det, u_det = theta, get_along(heading)
+            break
+        if abs(turned) > MAX_SNAP_HEADING_DEG:
+            break
+        time.sleep(0.005)
+    drive(0, 0)
+    time.sleep(0.04)
+    update_odometer()
+
+    if not found:
+        # False trigger (e.g. pom-pom/seam) or missed line: undo the single-wheel pivot so heading isn't ruined.
+        if abs(turned) > 0.5:
+            if first == "L":
+                drive(0, -LINE_SQUARE_DPS)
+            else:
+                drive(-LINE_SQUARE_DPS, 0)
+            t_undo = time.time()
+            undone = 0.0
+            prev_th = theta
+            while time.time() - t_undo < LINE_SQUARE_TIMEOUT_SEC:
+                update_odometer()
+                undone += minimal_angle_diff(theta, prev_th)
+                prev_th = theta
+                if abs(undone) >= abs(turned):
+                    break
+                time.sleep(0.005)
+            drive(0, 0)
+            time.sleep(0.04)
+            update_odometer()
+        return False
+
+    # When the second sensor reached the line's near edge, the first sat `depth` cm into it: the sensor bar was
+    # at e to the line (+ = left sensor ahead), less SENSOR_SKEW_DEG (left sensor mounted ahead by that angle).
+    e = math.degrees(math.atan2(depth, SENSOR_SPACING)) * (1.0 if first == "L" else -1.0) - SENSOR_SKEW_DEG
+    offset = minimal_angle_diff((heading + e) % 360.0, theta_det)   # odometry's heading error before this line
+    if abs(offset) > MAX_SNAP_HEADING_DEG:
+        return False
+    er = math.radians(e)
+    sigma_second = 1.0 if second == "L" else -1.0
+    fwd_second = SENSOR_OFFSET + 0.5 * sigma_second * SENSOR_SPACING * math.tan(math.radians(SENSOR_SKEW_DEG))
+    u_axle_det = line_u - fwd_second * math.cos(er) - sigma_second * (SENSOR_SPACING / 2.0) * math.sin(er)
+    du = get_along(heading) - u_det                 # moved since the second hit (the pivot's coast)
+    # Odometry tracked the pivot, so `offset` is the heading error that accumulated before this line:
+    # back-correct cross-track drift just like flying snaps do.
+    d = max(0.0, min(HEADING_BACKFIX_MAX_CM, travel_pre - _hdg_ref_travel)) * _hdg_ref_weight
+    tb, tt = math.radians(theta_pre), math.radians(theta_pre + offset)
+    x += d * (math.sin(tt) - math.sin(tb))
+    y += d * (math.cos(tt) - math.cos(tb))
+    theta = (theta + offset) % 360.0
     _mark_heading_reference(0.5)
-    set_along(heading, line_u - SENSOR_OFFSET * math.cos(math.radians(SENSOR_SKEW_DEG)))
-    _emit_snap(heading, line_u, "square", -delta)
+    set_along(heading, u_axle_det + du)
+    _emit_snap(heading, line_u, "square", -offset)
     return True
 
 
@@ -1188,6 +1170,7 @@ def drive_run(
     update_odometer()
     t_start = time.time()
     t_ramp = t_start
+    sq_look = None                            # (line, travel) at the last stop-mode look at the colour sensors
     while True:
         update_odometer()
         u = get_along(heading)
@@ -1215,10 +1198,14 @@ def drive_run(
                         hit_l = get_color_red(left_color) < LINE_THRESHOLD
                         hit_r = get_color_red(right_color) < LINE_THRESHOLD
                         if hit_l or hit_r:
-                            _stop_and_square_line(heading, line_u, hit_l, hit_r)
+                            # the line was reached somewhere since the last look: midway, on average
+                            seen_at = 0.5 * (sq_look[1] + travel_cm) if sq_look and sq_look[0] == k else travel_cm
+                            _stop_and_square_line(heading, line_u, hit_l, hit_r, seen_at)
                             snapped.add(k)
                             t_ramp = time.time()
+                            sq_look = None
                             break
+                        sq_look = (k, travel_cm)
                     elif d > LINE_WINDOW_CM:
                         snapped.add(k)         # missed this line entirely; give up on it
                     continue
