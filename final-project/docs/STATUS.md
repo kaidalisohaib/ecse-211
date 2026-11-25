@@ -2,7 +2,14 @@
 
 Newest first. Group 13, ECSE 211 F26 final project.
 
-## 2026-11-25 (newest): review of 5e43e7b (lab changes) + stop-and-square heading fix
+## 2026-11-25 (newest): back to flying line snaps
+
+User: switch to flying ("the last one we tested and that worked"). `LINE_SQUARE_MODE = "flying"` (sim `I_fly`:
+145/150, P1 / P2 ~4 s faster each than "stop"); "stop" (with the fix below) stays available.
+User also reset `LEFT_WHEEL_SCALE` / `RIGHT_WHEEL_SCALE` to 1.000 on the robot (its `calibration_params.json`,
+not in git; the code defaults are already 1.0). Re-running the auto-tuner writes its own scales again.
+
+## 2026-11-25: review of 5e43e7b (lab changes) + stop-and-square heading fix
 
 Pulled 5e43e7b (turret range +-110, stop-and-square at grid lines `LINE_SQUARE_MODE = "stop"`, `SENSOR_SKEW_DEG`,
 TRACK_WIDTH 13.45 / sensors -5 cm / spacing 14 measured, `STREET_RULES = False` + edge-street exit rule, origin

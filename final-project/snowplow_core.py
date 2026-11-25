@@ -68,8 +68,9 @@ SENSOR_SKEW_DEG = 0.0         # Colour sensor bar angle bias (deg): + = left sen
                               # (fixes steady LEFT drift after snaps); - = right triggers ahead (fixes RIGHT drift)
 LINE_THRESHOLD = 30           # Reflected red below this = black line
 LINE_WINDOW_CM = 7.0          # Only look for a line within +-7.0 cm of where odometry expects it
-LINE_SQUARE_MODE = "stop"     # "stop" = stop when one colour sensor hits and pivot until the other sees the line;
-                              # "flying" = keep driving and estimate heading from the travel gap between hits
+LINE_SQUARE_MODE = "flying"   # "flying" = keep driving and estimate heading from the travel gap between hits (the
+                              # last mode tested on the robot, 2026-11-24; sim ~4 s faster per phase than "stop");
+                              # "stop" = stop when one colour sensor hits and pivot until the other sees the line
 LINE_SQUARE_DPS = 65          # Wheel speed (dps) while pivoting to align the second sensor onto the line
 LINE_SQUARE_TIMEOUT_SEC = 1.5 # Max time (s) spent searching for the second sensor during stop-and-square
 MAX_SNAP_GAP_CM = 4.0         # Second sensor must hit within 4 cm of travel (= ~18 deg); else single-sensor snap
