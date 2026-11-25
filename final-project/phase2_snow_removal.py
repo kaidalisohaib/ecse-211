@@ -474,14 +474,16 @@ def travel(current, targets, blocked, known, speed_dps=CRUISE_DPS, then_heading=
 
 def corner_boxes(street, blocked) -> set:
     """Tiles that may hold a corner box: diagonal to a street tile, with a house on both tiles between them
-    (the outside of a street corner, e.g. (6,3) on the handout's sample map). Phase 1 never sees these."""
+    (the outside of a street corner, e.g. (6,3) on the handout's sample map). Phase 1 never sees these.
+    The 4 origin tiles never hold houses."""
     street = set(street)
+    origin = set(core.ORIGIN_TILES)
     out = set()
     for sx, sy in street:
         for dx in (-1, 1):
             for dy in (-1, 1):
                 d = (sx + dx, sy + dy)
-                if (d not in street and core.is_tile_in_bounds(*d)
+                if (d not in street and d not in origin and core.is_tile_in_bounds(*d)
                         and (sx + dx, sy) in blocked and (sx, sy + dy) in blocked):
                     out.add(d)
     return out
@@ -532,10 +534,12 @@ def run_phase2():
     blocked = {tuple(t) for t in m.get("blocked_tiles", [])}
     blocked.difference_update(street)
     blocked |= core.infer_houses(street, approach_tile, exit_tile)   # older maps may lack them
+    blocked.difference_update(core.ORIGIN_TILES)                     # the 4 origin tiles never hold houses
     traversed = {tuple(t) for t in m.get("traversed_tiles", [])}
-    known = traversed | set(street) | {approach_tile} | ({exit_tile} if exit_tile else set())
+    known = traversed | set(street) | set(core.ORIGIN_TILES) | {approach_tile} | ({exit_tile} if exit_tile else set())
     if TRUST_MAP:
         blocked |= corner_boxes(street, blocked) - known
+        blocked.difference_update(core.ORIGIN_TILES)
         known = {t for t in core.all_tiles() if t not in blocked}
     dropoff_tile = tuple(m["dropoff_tile"])
     dropoff_heading = int(m["dropoff_heading"])

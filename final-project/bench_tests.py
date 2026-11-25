@@ -90,11 +90,11 @@ def t_turret_and_us():
     """Turret direction (Phase 1 hardware) and ultrasonic accuracy."""
     core.init_hardware(phase=1)
     print("   The turret's zero is wherever it points now: it must point straight ahead.")
-    for ang, name in ((90, "RIGHT"), (-90, "LEFT"), (0, "FORWARD")):
+    for ang, name in ((core.TURRET_RIGHT_DEG, "RIGHT"), (core.TURRET_LEFT_DEG, "LEFT"), (0, "FORWARD")):
         core.set_turret_angle(ang)
-        print(f"   turret -> {ang:+d} (should point {name}), US {core.get_us_cm(samples=3):.1f} cm")
+        print(f"   turret -> {ang:+.0f} (should point {name}), US {core.get_us_cm(samples=3):.1f} cm")
         time.sleep(0.8)
-    if ask("Did +90 point RIGHT? (y/n)") == "n":
+    if ask(f"Did {core.TURRET_RIGHT_DEG:+.0f} point RIGHT? (y/n)") == "n":
         print(f"   -> TURRET_GEAR_RATIO = {-core.TURRET_GEAR_RATIO} (sign flip; also set the gear ratio if geared)")
     print("   Distance check: put a box face square to the sensor; enter the true distance from the")
     print("   sensor face in cm (q to stop).")

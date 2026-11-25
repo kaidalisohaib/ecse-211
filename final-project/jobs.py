@@ -60,10 +60,11 @@ BRINGUP = [   # (job, args, hardware, label, constants this step tunes)
     ("autotune", [], None, "Auto-tuner: wheel radius, left/right scale, track width", ["calibration file"]),
     ("bench", ["4"], None, "Bench 4: In-place turns (after the auto-tuner)",
      ["KP_TURN", "TURN_DPS_MAX", "TURN_DPS_MIN", "TURN_TOLERANCE_DEG"]),
-    ("bench", ["5"], None, None, ["SENSOR_OFFSET_BY_PHASE", "LINE_CROSS_MAX_DPS", "KP_DRIVE_HEADING",
-                                  "K_LATERAL_DEG_PER_CM"]),
+    ("bench", ["5"], None, None, ["SENSOR_OFFSET_BY_PHASE", "SENSOR_SKEW_DEG", "LINE_SQUARE_MODE", "LINE_SQUARE_DPS",
+                                  "LINE_CROSS_MAX_DPS", "KP_DRIVE_HEADING", "K_LATERAL_DEG_PER_CM"]),
     ("bench", ["6"], None, None, []),
-    ("bench", ["3"], 1, None, ["TURRET_GEAR_RATIO", "US_FACE_CM", "US_SPACING_SEC"]),
+    ("bench", ["3"], 1, None, ["TURRET_GEAR_RATIO", "TURRET_LEFT_DEG", "TURRET_RIGHT_DEG", "US_FACE_CM",
+                               "US_SPACING_SEC"]),
     ("bench", ["7"], 1, None, ["USE_US_LATERAL_FIX"]),
     ("phase1", [], 1, "Phase 1 on a box street", ["EXPLORE_DPS", "FORWARD_STOP_CM", "WALL_THRESHOLD_CM"]),
     ("bench", ["8"], 2, None, ["ROLLER_SWEEP_POWER", "ROLLER_SWEEP_DPS", "SWEEP_DPS"]),
@@ -79,8 +80,8 @@ BENCH_PHASE = {3: 1, 7: 1, 8: 2, 9: 2, 10: 2}     # bench tests that need one ha
 READY = {
     "autotune": "Put the robot about 3 cm behind a black grid line, facing it, with 3 free tiles ahead. It drives "
                 "2 tiles, then spins in place 6 times. Press Continue to start",
-    "3": "Phase 1 hardware on, turret pointing straight ahead. The turret turns to +90, -90, then back to 0. "
-         "Press Continue to start",
+    "3": "Phase 1 hardware on, turret pointing straight ahead. The turret turns to TURRET_RIGHT_DEG, TURRET_LEFT_DEG, "
+         "then back to 0. Press Continue to start",
 }
 
 

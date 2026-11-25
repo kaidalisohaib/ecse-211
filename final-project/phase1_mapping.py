@@ -62,10 +62,9 @@ MAX_FORWARD_RUN_TILES = 8        # "forward" mode: longest run before a precauti
 SKIP_KNOWN_READINGS = True       # at stops, only measure directions whose answer isn't known yet, and turn
                                  # without looking when only one way is possible. At the gate, one side reading
                                  # tells which tile is the street. False = full L/F/R scans
-STREET_RULES = True              # the street is boxed in by houses on the table on both sides: no street tile in
-                                 # the outer ring of tiles (no room for its house), and a house straight ahead
-                                 # means "not the exit". Skips more readings; a wrong blind turn is still caught.
-                                 # False = only rule out what the robot has seen
+STREET_RULES = False             # If True, assumes no street tile can be in the outer ring of tiles (blindly
+                                 # declares "exit" on edge tiles like y=-1 without scanning L/R). Keep False so
+                                 # outer-ring corners/walls (e.g. bottom-right corner) are always scanned properly.
 RETRY_ONE_TILE_STREET = True     # a one-tile street means the gate check guessed the wrong side: explore again
                                  # from the other gate tile
 ALWAYS_FINISH_STREET = True      # map the whole street even if time runs short: a half map leaves Phase 2 a
@@ -112,11 +111,11 @@ def select_entrance_candidate(s1: tuple[int, int], s2: tuple[int, int]) -> dict:
 
 
 def record_scan(tile, heading, scan, blocked):
-    """Marks in-bounds neighbours seen as walls in the scan as blocked."""
+    """Marks in-bounds neighbours seen as walls in the scan as blocked (the 4 origin tiles are never houses)."""
     for key, rel in (("F", 0), ("R", 90), ("L", -90)):
         if scan[key] < WALL_THRESHOLD_CM:
             t = tile_step(tile, (heading + rel) % 360)
-            if is_tile_in_bounds(*t):
+            if is_tile_in_bounds(*t) and t not in core.ORIGIN_TILES:
                 blocked.add(t)
 
 
@@ -158,7 +157,7 @@ def look_around(current, heading, street, blocked, visited, known, full=False):
                       and not (STREET_RULES and on_edge(tiles[d])) for d in REL}
     read = dict(known)
     if not full:
-        for d in ("L", "R"):
+        for d in ("L", "F", "R"):
             if tiles[d] in FREE and tiles[d] not in street and d not in read:
                 read[d] = 255.0                # known to have no house: open without looking
                 can_open[d] = True
@@ -181,12 +180,23 @@ def look_around(current, heading, street, blocked, visited, known, full=False):
             if d not in read:
                 read[d] = measured[d] = core.check_direction_distance(REL[d], restore=False)
     exit_possible = len(street) > 1 and maybe(can_open, "L") and maybe(can_open, "R")
+    # Street running along the table edge (one side off-table, the other in-bounds): no house can sit off-table,
+    # so if BOTH the in-bounds side AND forward are open (not a corner with a wall ahead), the street has ended.
+    edge_side = None
+    if len(street) > 1 and not exit_possible:
+        l_in, r_in = is_tile_in_bounds(*tiles["L"]), is_tile_in_bounds(*tiles["R"])
+        if l_in != r_in:
+            s = "L" if l_in else "R"
+            if maybe(can_open, s) and maybe(can_open, "F"):
+                edge_side = s
     wall_ahead = read.get("F", 255.0) < WALL_THRESHOLD_CM
     if STREET_RULES and not full and wall_ahead:
         exit_possible = False                  # a house straight ahead: this is a corner, not the street's end
     if STREET_RULES and not full and len(street) > 1 and not wall_ahead and on_edge(current):
         choice = "exit"                        # this tile can't be a street tile (outer ring): the street ended
     elif exit_possible and is_open(can_open, "L") and is_open(can_open, "R"):
+        choice = "exit"
+    elif edge_side is not None and is_open(can_open, edge_side) and is_open(can_open, "F"):
         choice = "exit"
     else:
         choice = None
@@ -266,7 +276,7 @@ def explore_street(start_tile, heading, scan, street, visited, blocked, traverse
         for j, status in res["side_status"].items():
             if status == "wall" and 1 <= j < len(run_tiles):
                 wt = tile_step(run_tiles[j], (heading + 90 * side) % 360)
-                if is_tile_in_bounds(*wt):
+                if is_tile_in_bounds(*wt) and wt not in core.ORIGIN_TILES:
                     blocked.add(wt)
         current = res["tile"]
         emit_map(street, blocked)
@@ -477,7 +487,7 @@ def run_phase1(s1=None, s2=None, d1=None, d2=None):
         # A house beside this tile doesn't settle it: the tile outside the gate can have one too (the walls of
         # the street's other arm in a U, or of its second tile when it turns right after the gate). Only a house
         # on both sides does; one open side means outside (if that's wrong, the one-tile check below catches it).
-        d = min(sides, key=lambda d: abs(REL[d] - core.turret_angle))
+        d = min(sides, key=lambda d: abs(core.turret_target_for(REL[d]) - core.turret_angle))
         readings = {d: core.check_direction_distance(REL[d], restore=False)}
         if readings[d] < WALL_THRESHOLD_CM and len(sides) == 2:
             o = "R" if d == "L" else "L"
@@ -531,10 +541,12 @@ def run_phase1(s1=None, s2=None, d1=None, d2=None):
                                                phase_start)
             current = exit_tile if exit_tile is not None else (street[-1] if street else current)
     blocked.difference_update(street)
+    blocked.difference_update(core.ORIGIN_TILES)
     if exit_tile is not None:
         blocked.discard(exit_tile)
-    # A street is one tile wide: every other tile touching it is a house.
+    # A street is one tile wide: every other tile touching it is a house (never the 4 origin tiles).
     blocked |= core.infer_houses(street, approach_tile, exit_tile)
+    blocked.difference_update(core.ORIGIN_TILES)
     emit_map(street, blocked, exit_tile, approach_tile)
 
     payload = {

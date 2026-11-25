@@ -54,21 +54,26 @@ TILE_SIZE = 30.48
 WHEEL_RADIUS = 2.10           # Overridden by calibration_params.json
 LEFT_WHEEL_SCALE = 1.0000
 RIGHT_WHEEL_SCALE = 1.0000
-TRACK_WIDTH = 13.75           # tape measure 2026-11-22: tyre centres (5.75 to 8 cm each side). The auto-tuner's
-TRACK_WIDTH_CW = 13.75        # calibration_params.json overrides these three
-TRACK_WIDTH_CCW = 13.75
+TRACK_WIDTH = 13.45           # measured 2026-11-24: tyre centre-to-centre ((11.4 inner + 15.5 outer) / 2).
+TRACK_WIDTH_CW = 13.45        # calibration_params.json overrides these three if present
+TRACK_WIDTH_CCW = 13.45
 
 # Colour sensors, relative to the wheel-axle midpoint (cm).
 # Colour sensors: distance ahead of the wheel axle, per phase (MEASURE). Negative = behind the axle,
 # which is where the team is mounting them (behind the intake, on swept floor). The snap math works either way.
-SENSOR_OFFSET_BY_PHASE = {1: -4.0, 2: -4.0}   # measured 2026-11-22: 4 cm behind the axle
+SENSOR_OFFSET_BY_PHASE = {1: -5.0, 2: -5.0}   # measured 2026-11-24: 5 cm behind the axle
 SENSOR_OFFSET = SENSOR_OFFSET_BY_PHASE[1]   # set by init_hardware(phase)
-SENSOR_SPACING = 12.0         # MEASURE. Left-to-right distance between the two colour sensors (centre to centre;
-                              # a bit less than the 13.75 cm track on the robot). The auto-tuner doesn't find it
+SENSOR_SPACING = 14.0         # measured 2026-11-24: 14 cm centre-to-centre between the two colour sensors
+SENSOR_SKEW_DEG = 0.0         # Colour sensor bar angle bias (deg): + = left sensor triggers ahead of right
+                              # (fixes steady LEFT drift after snaps); - = right triggers ahead (fixes RIGHT drift)
 LINE_THRESHOLD = 30           # Reflected red below this = black line
-LINE_WINDOW_CM = 5.5          # Only look for a line within +-5.5 cm of where odometry expects it
+LINE_WINDOW_CM = 7.0          # Only look for a line within +-7.0 cm of where odometry expects it
+LINE_SQUARE_MODE = "stop"     # "stop" = stop when one colour sensor hits and pivot until the other sees the line;
+                              # "flying" = keep driving and estimate heading from the travel gap between hits
+LINE_SQUARE_DPS = 65          # Wheel speed (dps) while pivoting to align the second sensor onto the line
+LINE_SQUARE_TIMEOUT_SEC = 1.5 # Max time (s) spent searching for the second sensor during stop-and-square
 MAX_SNAP_GAP_CM = 4.0         # Second sensor must hit within 4 cm of travel (= ~18 deg); else single-sensor snap
-MAX_SNAP_HEADING_DEG = 18.0   # Reject heading snaps larger than this (pom-pom or seam, not a line).
+MAX_SNAP_HEADING_DEG = 18.0   # Reject heading snaps / stop-square pivots larger than this (pom-pom or seam, not a line).
                               # Must stay above the worst real error: an uncalibrated U-turn is easily 10 deg off.
 
 # ==================== MOTION PROFILE & CONTROL GAINS (TUNE) ====================
@@ -92,9 +97,11 @@ MAX_LATERAL_STEER_DEG = 6.0
 # ==================== ULTRASONIC & TURRET (MEASURE / TUNE) ====================
 USE_TURRET = True             # Phase 1 hardware has the turret (TURRET_PORT)
 TURRET_GEAR_RATIO = 1.0       # motor degrees per turret degree
+TURRET_LEFT_DEG = -110.0      # Turret angle (deg) when looking left (replaces -90; tune for gear slack / cable)
+TURRET_RIGHT_DEG = 110.0      # Turret angle (deg) when looking right (replaces +90)
 TURRET_DPS = 400
 TURRET_SETTLE_TOL_DEG = 2.0
-TURRET_MOVE_TIMEOUT_SEC = 0.8
+TURRET_MOVE_TIMEOUT_SEC = 1.0
 GLANCE_WHILE_DRIVING = True   # side glances don't pause the drive loop (steering, odometry, line checks keep
                               # running while the turret swings out and back); False = old blocking glance
 US_FORWARD_OFFSET_CM = 8.0    # MEASURE: turret axis (or fixed sensor) ahead of the wheel axle
@@ -519,9 +526,10 @@ def turn_to(target_heading: float):
         drive(direction * speed, -direction * speed)
         time.sleep(0.008)
 
-    stop_drive_motors()
+    drive(0, 0)
     time.sleep(0.08)
     update_odometer()
+    stop_drive_motors()
     _mark_heading_reference(1.0)
 
 
@@ -559,9 +567,10 @@ def drive_straight_distance(distance_cm: float, forward: bool = True, hold_headi
         mag = compute_trapezoidal_dps(time.time() - t_start, remaining, ceiling_dps=speed_dps)
         drive_with_heading_hold(mag if forward else -mag, lock_heading)
         time.sleep(0.008)
-    stop_drive_motors()
+    drive(0, 0)
     time.sleep(0.08)
     update_odometer()
+    stop_drive_motors()
 
 
 # ==================== ORIGIN <-> TILE (0,0) TRANSITION ====================
@@ -712,15 +721,29 @@ def glance_cm() -> float:
     return get_us_cm(samples=US_GLANCE_SAMPLES, spacing_sec=0.01, extra=US_GLANCE_EXTRA, threshold=WALL_THRESHOLD_CM)
 
 
+def turret_target_for(rel_angle_deg: float) -> float:
+    """Maps a logical scan direction (-90 left, 0 forward, +90 right) to the configured turret range."""
+    if abs(rel_angle_deg) <= 1.0:
+        return 0.0
+    if abs(rel_angle_deg - 90.0) <= 1.0:
+        return float(TURRET_RIGHT_DEG)
+    if abs(rel_angle_deg + 90.0) <= 1.0:
+        return float(TURRET_LEFT_DEG)
+    lo, hi = min(TURRET_LEFT_DEG, TURRET_RIGHT_DEG), max(TURRET_LEFT_DEG, TURRET_RIGHT_DEG)
+    return max(lo, min(hi, float(rel_angle_deg)))
+
+
 def set_turret_angle(rel_angle_deg: float, wait: bool = True):
-    """Points the turret (-90 = left, 0 = forward, +90 = right) and waits until it gets there."""
+    """Points the turret within [TURRET_LEFT_DEG, TURRET_RIGHT_DEG] (0 = forward) and waits until it gets there."""
     global turret_angle
     if not turret_present:
         return
-    target_enc = int(round(turret_zero_enc + rel_angle_deg * TURRET_GEAR_RATIO))
+    lo, hi = min(TURRET_LEFT_DEG, TURRET_RIGHT_DEG), max(TURRET_LEFT_DEG, TURRET_RIGHT_DEG)
+    angle = max(lo, min(hi, float(rel_angle_deg)))
+    target_enc = int(round(turret_zero_enc + angle * TURRET_GEAR_RATIO))
     turret_motor.set_limits(power=80, dps=TURRET_DPS)
     turret_motor.set_position(target_enc)
-    turret_angle = rel_angle_deg
+    turret_angle = angle
     if not wait:
         return
     t0 = time.time()
@@ -745,10 +768,10 @@ def turret_at_target() -> bool:
 def check_direction_distance(rel_angle_deg: float, restore: bool = True) -> float:
     """
     Distance (cm) in direction rel_angle_deg (-90 left, 0 forward, +90 right).
-    Turret if present, else pivots the whole robot.
+    Turret if present (mapped to TURRET_LEFT_DEG / 0 / TURRET_RIGHT_DEG), else pivots the whole robot.
     """
     if turret_present:
-        set_turret_angle(rel_angle_deg)
+        set_turret_angle(turret_target_for(rel_angle_deg))
         dist = get_us_cm(samples=US_SCAN_SAMPLES, extra=US_SCAN_EXTRA, threshold=WALL_THRESHOLD_CM)
         if restore and abs(rel_angle_deg) > 1.0:
             set_turret_angle(0.0)
@@ -848,6 +871,7 @@ def _snap_heading_and_along(heading: int, line_u: float, first: str, gap_cm: flo
     e = math.degrees(math.atan2(gap_cm, SENSOR_SPACING))
     if first == "R":
         e = -e
+    e -= SENSOR_SKEW_DEG
     if abs(e) > MAX_SNAP_HEADING_DEG:
         return False
     # The heading was off by `delta` since the last turn (or snap): odometry put every cm driven since
@@ -863,7 +887,9 @@ def _snap_heading_and_along(heading: int, line_u: float, first: str, gap_cm: flo
     _emit_snap(heading, line_u, "both", e)
     er = math.radians(e)
     sigma_second = -1.0 if first == "L" else 1.0   # +1 = left sensor, -1 = right sensor
-    u_axle = line_u - SENSOR_OFFSET * math.cos(er) - sigma_second * (SENSOR_SPACING / 2.0) * math.sin(er)
+    lead = SENSOR_SPACING * math.tan(math.radians(SENSOR_SKEW_DEG))
+    fwd_second = SENSOR_OFFSET + 0.5 * sigma_second * lead
+    u_axle = line_u - fwd_second * math.cos(er) - sigma_second * (SENSOR_SPACING / 2.0) * math.sin(er)
     set_along(heading, u_axle)
     return True
 
@@ -875,6 +901,177 @@ def _snap_along_single(heading: int, line_u: float, which: str, travel_since_hit
     u_at_hit = line_u - SENSOR_OFFSET * math.cos(er) - sigma * (SENSOR_SPACING / 2.0) * math.sin(er)
     set_along(heading, u_at_hit + travel_since_hit * math.cos(er))
     _emit_snap(heading, line_u, "single")
+
+
+def _stop_and_square_line(heading: int, line_u: float, hit_l: bool, hit_r: bool) -> bool:
+    """
+    Stops immediately when one colour sensor detects a grid line and pivots the other wheel
+    until the second colour sensor also detects the line, physically squaring the robot to
+    `heading` and snapping both heading and along-track position.
+    """
+    global theta, x, y
+    update_odometer()
+    theta_pre = theta
+    travel_pre = travel_cm
+    t_hit_l = travel_cm if hit_l else None
+    t_hit_r = travel_cm if hit_r else None
+
+    # Actively brake both drive motors while watching if the second sensor hits during stopping.
+    drive(0, 0)
+    t_brake = time.time()
+    while time.time() - t_brake < 0.08:
+        update_odometer()
+        if t_hit_l is None and get_color_red(left_color) < LINE_THRESHOLD:
+            t_hit_l = travel_cm
+        if t_hit_r is None and get_color_red(right_color) < LINE_THRESHOLD:
+            t_hit_r = travel_cm
+        time.sleep(0.005)
+    update_odometer()
+
+    # Case 1: Both sensors already detected the line at trigger or while braking.
+    if t_hit_l is not None and t_hit_r is not None:
+        first = "L" if t_hit_l <= t_hit_r else "R"
+        t_second = max(t_hit_l, t_hit_r)
+        gap = abs(t_hit_l - t_hit_r)
+        if _snap_heading_and_along(heading, line_u, first, gap):
+            er = math.radians(minimal_angle_diff(theta, heading))
+            set_along(heading, get_along(heading) + (travel_cm - t_second) * math.cos(er))
+            return True
+        _snap_along_single(heading, line_u, first, travel_cm - min(t_hit_l, t_hit_r))
+        return False
+
+    # Case 2: Only one sensor hit. Check BEFORE pivoting whether it coasted past the thin line while braking:
+    # if so, back both wheels just behind the line and re-approach slowly so it stops on the leading edge.
+    first = "L" if t_hit_l is not None else "R"
+    other_sensor = right_color if first == "L" else left_color
+    first_sensor = left_color if first == "L" else right_color
+
+    if get_color_red(first_sensor) >= LINE_THRESHOLD:
+        drive(-LINE_SQUARE_DPS, -LINE_SQUARE_DPS)
+        t_back = time.time()
+        tr0 = travel_cm
+        saw_line = False
+        while time.time() - t_back < 0.7 and abs(travel_cm - tr0) < 2.0:
+            update_odometer()
+            red = get_color_red(first_sensor)
+            if red < LINE_THRESHOLD:
+                saw_line = True
+            elif saw_line and red >= LINE_THRESHOLD + 5:
+                break
+            time.sleep(0.005)
+        drive(0, 0)
+        time.sleep(0.03)
+        update_odometer()
+        # Re-approach slowly until a sensor hits the leading edge (at LINE_SQUARE_DPS, coasting is < 0.1 cm).
+        drive(LINE_SQUARE_DPS, LINE_SQUARE_DPS)
+        t_re = time.time()
+        tr1 = travel_cm
+        re_l = re_r = False
+        while time.time() - t_re < 0.9 and abs(travel_cm - tr1) < 2.5:
+            update_odometer()
+            re_l = get_color_red(left_color) < LINE_THRESHOLD
+            re_r = get_color_red(right_color) < LINE_THRESHOLD
+            if re_l or re_r:
+                break
+            time.sleep(0.005)
+        drive(0, 0)
+        t_b2 = time.time()
+        while time.time() - t_b2 < 0.05:
+            update_odometer()
+            if not re_l and get_color_red(left_color) < LINE_THRESHOLD:
+                re_l = True
+            if not re_r and get_color_red(right_color) < LINE_THRESHOLD:
+                re_r = True
+            time.sleep(0.005)
+        update_odometer()
+        if not (re_l or re_r):
+            return False
+        if re_l and re_r:
+            first = None
+        else:
+            first = "L" if re_l else "R"
+            other_sensor = right_color if first == "L" else left_color
+            first_sensor = left_color if first == "L" else right_color
+
+    if first is not None:
+        if first == "L":
+            drive(0, LINE_SQUARE_DPS)
+        else:
+            drive(LINE_SQUARE_DPS, 0)
+
+        turned = 0.0
+        prev_th = theta
+        t0 = time.time()
+        found = False
+        while time.time() - t0 < LINE_SQUARE_TIMEOUT_SEC:
+            update_odometer()
+            turned += minimal_angle_diff(theta, prev_th)
+            prev_th = theta
+            if get_color_red(other_sensor) < LINE_THRESHOLD:
+                found = True
+                break
+            if abs(turned) > MAX_SNAP_HEADING_DEG:
+                break
+            time.sleep(0.005)
+        drive(0, 0)
+        time.sleep(0.04)
+        update_odometer()
+
+        if not found:
+            # False trigger (e.g. pom-pom/seam) or missed line: undo the single-wheel pivot so heading isn't ruined.
+            if abs(turned) > 0.5:
+                if first == "L":
+                    drive(0, -LINE_SQUARE_DPS)
+                else:
+                    drive(-LINE_SQUARE_DPS, 0)
+                t_undo = time.time()
+                undone = 0.0
+                prev_th = theta
+                while time.time() - t_undo < LINE_SQUARE_TIMEOUT_SEC:
+                    update_odometer()
+                    undone += minimal_angle_diff(theta, prev_th)
+                    prev_th = theta
+                    if abs(undone) >= abs(turned):
+                        break
+                    time.sleep(0.005)
+                drive(0, 0)
+                time.sleep(0.04)
+                update_odometer()
+            return False
+
+        # With sensors behind the axle (SENSOR_OFFSET < 0), straightening from a larger angle swings the first
+        # sensor slightly *behind* the line: nudge its wheel forward back onto the leading edge if needed.
+        if get_color_red(first_sensor) >= LINE_THRESHOLD:
+            if first == "L":
+                drive(LINE_SQUARE_DPS, 0)
+            else:
+                drive(0, LINE_SQUARE_DPS)
+            t_nudge = time.time()
+            tr2 = travel_cm
+            while time.time() - t_nudge < 0.5 and abs(travel_cm - tr2) < 0.8:
+                update_odometer()
+                if get_color_red(first_sensor) < LINE_THRESHOLD:
+                    break
+                time.sleep(0.005)
+            drive(0, 0)
+            time.sleep(0.03)
+            update_odometer()
+
+    # Both sensors now sit on line_u. If the left sensor leads the right by SENSOR_SKEW_DEG, the chassis is
+    # physically angled at `heading - SENSOR_SKEW_DEG`. Odometry tracked the pivot, so `delta` is the heading
+    # error that accumulated before this line: back-correct cross-track drift just like flying snaps do.
+    actual_heading = (heading - SENSOR_SKEW_DEG) % 360.0
+    delta = minimal_angle_diff(actual_heading, theta)
+    if abs(delta) <= MAX_SNAP_HEADING_DEG:
+        d = max(0.0, min(HEADING_BACKFIX_MAX_CM, travel_pre - _hdg_ref_travel)) * _hdg_ref_weight
+        tb, tt = math.radians(theta_pre), math.radians(theta_pre + delta)
+        x += d * (math.sin(tt) - math.sin(tb))
+        y += d * (math.cos(tt) - math.cos(tb))
+    theta = actual_heading
+    _mark_heading_reference(0.5)
+    set_along(heading, line_u - SENSOR_OFFSET * math.cos(math.radians(SENSOR_SKEW_DEG)))
+    _emit_snap(heading, line_u, "square", -delta)
+    return True
 
 
 def compile_runs(path: list[tuple[int, int]]) -> list[tuple[int, int]]:
@@ -949,7 +1146,7 @@ def drive_run(
     if watch_forward:
         set_turret_angle(0.0)
     elif side_us is not None and turret_present:
-        set_turret_angle(90.0 * side_us)
+        set_turret_angle(turret_target_for(90.0 * side_us))
     vizlog.emit("run", tile=list(start_tile), h=heading, n=n_tiles)
 
     u0 = tile_center_along(start_tile, heading)
@@ -990,18 +1187,19 @@ def drive_run(
 
     update_odometer()
     t_start = time.time()
+    t_ramp = t_start
     while True:
         update_odometer()
         u = get_along(heading)
         remaining = u_goal - u
         if remaining <= 0.0:
             break
-        if time.time() - t_start > 4.0 + n_tiles * 6.0:
+        if time.time() - t_start > 4.0 + n_tiles * 8.0:
             print("  [RUN] timeout")
             stop_reason = "timeout"
             break
 
-        # ---- flying line snaps ----
+        # ---- line correction (stop-and-square or flying snaps) ----
         in_window = False
         if square_lines:
             u_s = u + SENSOR_OFFSET
@@ -1011,6 +1209,19 @@ def drive_run(
                 d = u_s - line_u
                 if d < -LINE_WINDOW_CM:
                     break                      # lines are ordered; the rest are further ahead
+                if LINE_SQUARE_MODE == "stop":
+                    if abs(d) <= LINE_WINDOW_CM:
+                        in_window = True
+                        hit_l = get_color_red(left_color) < LINE_THRESHOLD
+                        hit_r = get_color_red(right_color) < LINE_THRESHOLD
+                        if hit_l or hit_r:
+                            _stop_and_square_line(heading, line_u, hit_l, hit_r)
+                            snapped.add(k)
+                            t_ramp = time.time()
+                            break
+                    elif d > LINE_WINDOW_CM:
+                        snapped.add(k)         # missed this line entirely; give up on it
+                    continue
                 h = hits.setdefault(k, {})
                 if abs(d) <= LINE_WINDOW_CM:
                     in_window = True
@@ -1089,10 +1300,10 @@ def drive_run(
                         and u_goal > u0 + j * TILE_SIZE + 1.0):
                     glanced.add(j)
                     if GLANCE_WHILE_DRIVING:
-                        set_turret_angle(90.0 * side_glance, wait=False)
+                        set_turret_angle(turret_target_for(90.0 * side_glance), wait=False)
                         glance = {"j": j, "stage": "out", "t": time.time(), "at": None}
                     else:
-                        set_turret_angle(90.0 * side_glance)
+                        set_turret_angle(turret_target_for(90.0 * side_glance))
                         d_side = glance_cm()
                         set_turret_angle(0.0)
                         fwd_hist.clear()
@@ -1133,7 +1344,7 @@ def drive_run(
             ceiling = approach_dps + (speed_dps - approach_dps) * min(1.0, max(0.0, (remaining - approach_cm)
                                                                              / DECEL_DIST_CM))
         ceiling = min(ceiling, LINE_CROSS_MAX_DPS) if in_window else ceiling
-        cmd = compute_trapezoidal_dps(time.time() - t_start, remaining, ceiling)
+        cmd = compute_trapezoidal_dps(time.time() - t_ramp, remaining, ceiling)
         lane = v_lane
         if end_lane_offset_cm is not None and remaining < end_lane_lead_cm:
             lane = tile_center_lateral(start_tile, heading) + end_lane_offset_cm
@@ -1148,7 +1359,7 @@ def drive_run(
     stop_drive_motors()
     if glance is not None:                    # run ended mid-glance: finish it standing still
         if glance["stage"] == "out":
-            set_turret_angle(90.0 * side_glance)
+            set_turret_angle(turret_target_for(90.0 * side_glance))
             glance_result(glance["j"], glance_cm())
         set_turret_angle(0.0)
     time.sleep(0.05)
@@ -1237,9 +1448,10 @@ def drive_arc_about(px: float, py: float, radius: float, h_in: float, h_out: flo
         drive(base * (1 + s * ff) + corr, base * (1 - s * ff) - corr)
         time.sleep(0.006)
     if stop:
-        stop_drive_motors()
-        time.sleep(0.05)
+        drive(0, 0)
+        time.sleep(0.06)
         update_odometer()
+        stop_drive_motors()
         _mark_heading_reference(1.0)
 
 
@@ -1441,12 +1653,12 @@ def estimate_path_seconds(path: list[tuple[int, int]], start_heading: float | No
 
 def infer_houses(street, approach_tile=None, exit_tile=None) -> set[tuple[int, int]]:
     """
-    Every on-table tile touching the street that is not street, approach or exit is a house:
-    a street is one tile wide with houses on both sides. Used to plan transit paths without
-    having to look at every house.
+    Every on-table tile touching the street that is not street, approach, exit or one of the four
+    origin tiles is a house: a street is one tile wide with houses on both sides, and the four
+    tiles around the origin never hold houses.
     """
     street_set = {tuple(t) for t in street}
-    keep = street_set | {tuple(t) for t in (approach_tile, exit_tile) if t is not None}
+    keep = street_set | set(ORIGIN_TILES) | {tuple(t) for t in (approach_tile, exit_tile) if t is not None}
     houses = set()
     for t in street_set:
         for h in (0, 90, 180, 270):
@@ -1503,16 +1715,25 @@ def navigate_tile_with_obstacle_avoidance(
             free = free_tiles_ahead(dist, rel)
             if free == 0:
                 blocked_tile = tile_step(current_tile, heading)
-                print(f"  [OBSTACLE] {dist:.0f} cm toward {heading} -> Tile {blocked_tile} blocked.")
-                blocked_tiles.add(blocked_tile)
-                if blocked_tile in targets:
-                    targets.remove(blocked_tile)
-                    if not targets:
-                        print("  [NAV] Target tile is blocked; stopping here.")
-                        break
-                continue
-            n = min(n, free)
-        res = drive_run(current_tile, heading, n, speed_dps, watch_forward=watch and false_alarm_at != current_tile)
+                if blocked_tile not in ORIGIN_TILES:
+                    print(f"  [OBSTACLE] {dist:.0f} cm toward {heading} -> Tile {blocked_tile} blocked.")
+                    blocked_tiles.add(blocked_tile)
+                    if blocked_tile in targets:
+                        targets.remove(blocked_tile)
+                        if not targets:
+                            print("  [NAV] Target tile is blocked; stopping here.")
+                            break
+                    continue
+                n = min(n, 1)
+            else:
+                n = min(n, free)
+        # Never drive more than 1 tile with watch_forward off: a stationary check only guarantees
+        # the very next tile is clear (e.g. 38 cm ahead = 1 tile free, wall in the 2nd tile).
+        skip_watch = (false_alarm_at == current_tile)
+        if skip_watch:
+            n = min(n, 1)
+            false_alarm_at = None
+        res = drive_run(current_tile, heading, n, speed_dps, watch_forward=watch and not skip_watch)
         if traversed is not None:
             traversed.update(res["tiles"])
         current_tile = res["tile"]
@@ -1520,7 +1741,8 @@ def navigate_tile_with_obstacle_avoidance(
             # Stopped one tile short of a close reading. Confirm from here (close readings are reliable).
             nxt = tile_step(current_tile, heading)
             dist = check_direction_distance(0.0, restore=False)
-            if free_tiles_ahead(dist, 0.0) == 0:
+            free = free_tiles_ahead(dist, 0.0)
+            if free == 0 and nxt not in ORIGIN_TILES:
                 print(f"  [OBSTACLE] {dist:.0f} cm ahead -> Tile {nxt} blocked.")
                 blocked_tiles.add(nxt)
                 vizlog.emit("blocked", tile=list(nxt))
@@ -1530,7 +1752,8 @@ def navigate_tile_with_obstacle_avoidance(
                         print("  [NAV] Target tile is blocked; stopping here.")
                         break
             else:
-                print(f"  [NAV] Forward reading {dist:.0f} cm at {current_tile}: false alarm, continuing.")
+                reason = "origin tile (never a house)" if nxt in ORIGIN_TILES else f"{free} tile(s) clear ahead"
+                print(f"  [NAV] Forward reading {dist:.0f} cm at {current_tile} ({reason}): stepping 1 tile to re-check.")
                 false_alarm_at = current_tile
     return current_tile
 
