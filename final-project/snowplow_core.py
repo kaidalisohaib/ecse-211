@@ -64,7 +64,7 @@ TRACK_WIDTH_CCW = 13.45       # Track width used for counter-clockwise (left) tu
 SENSOR_OFFSET_BY_PHASE = {1: -5.0, 2: -5.0}   # measured 2026-11-24: 5 cm behind the axle
 SENSOR_OFFSET = SENSOR_OFFSET_BY_PHASE[1]   # set by init_hardware(phase)
 SENSOR_SPACING = 14.0         # measured 2026-11-24: 14 cm centre-to-centre between the two colour sensors
-SENSOR_SKEW_DEG = -1.5         # Colour sensor bar angle bias (deg): + = left sensor triggers ahead of right
+SENSOR_SKEW_DEG = 0.5          # Colour sensor bar angle bias (deg): + = left sensor triggers ahead of right
                               # (fixes steady LEFT drift after snaps); - = right triggers ahead (fixes RIGHT drift)
 LINE_THRESHOLD = 24           # Reflected red below this = black line
 LINE_WINDOW_CM = 7.0          # Only look for a line within +-7.0 cm of where odometry expects it
@@ -99,10 +99,13 @@ MAX_LATERAL_STEER_DEG = 6.0   # Most the robot steers (deg) to get back onto its
 USE_TURRET = True             # Phase 1 hardware has the turret (TURRET_PORT)
 TURRET_GEAR_RATIO = 1.0       # motor degrees per turret degree
 TURRET_LEFT_DEG = -110.0      # Turret angle (deg) when looking left (replaces -90; tune for gear slack / cable)
-TURRET_RIGHT_DEG = 110.0      # Turret angle (deg) when looking right (replaces +90)
+TURRET_RIGHT_DEG = 98.0       # Turret angle (deg) when looking right (physical right limit ~99 deg on the robot)
 TURRET_DPS = 400              # Turret motor speed (deg/s)
-TURRET_SETTLE_TOL_DEG = 2.0   # The turret counts as arrived when within this many degrees of its target
+TURRET_SETTLE_TOL_DEG = 5.0   # The turret counts as arrived when within this many degrees of its target
 TURRET_MOVE_TIMEOUT_SEC = 1.0 # Stop waiting for the turret after this long (s), even if it isn't there yet
+SIDE_RECHECK_CM = 10.5        # Standing side read below this (e.g. 8-9 cm next to a close front wall): back up
+                              # SIDE_RECHECK_BACK_CM to clear the front wall/cable, re-aim, and confirm (0 = off)
+SIDE_RECHECK_BACK_CM = 4.0    # Distance (cm) to back up and return when re-checking an unusually close side read
 GLANCE_WHILE_DRIVING = True   # side glances don't pause the drive loop (steering, odometry, line checks keep
                               # running while the turret swings out and back); False = old blocking glance
 US_FORWARD_OFFSET_CM = 8.0    # MEASURE: turret axis (or fixed sensor) ahead of the wheel axle
@@ -751,27 +754,38 @@ def turret_target_for(rel_angle_deg: float) -> float:
     return max(lo, min(hi, float(rel_angle_deg)))
 
 
-def set_turret_angle(rel_angle_deg: float, wait: bool = True):
-    """Points the turret within [TURRET_LEFT_DEG, TURRET_RIGHT_DEG] (0 = forward) and waits until it gets there."""
+def set_turret_angle(rel_angle_deg: float, wait: bool = True) -> bool:
+    """Points the turret within [TURRET_LEFT_DEG, TURRET_RIGHT_DEG] (0 = forward) and waits until it gets there.
+    Returns True if the turret reached its target (within 15 deg on timeout), False if it stalled short."""
     global turret_angle
     if not turret_present:
-        return
+        return True
     lo, hi = min(TURRET_LEFT_DEG, TURRET_RIGHT_DEG), max(TURRET_LEFT_DEG, TURRET_RIGHT_DEG)
     angle = max(lo, min(hi, float(rel_angle_deg)))
     target_enc = int(round(turret_zero_enc + angle * TURRET_GEAR_RATIO))
-    turret_motor.set_limits(power=80, dps=TURRET_DPS)
+    turret_motor.set_limits(power=100, dps=TURRET_DPS)
     turret_motor.set_position(target_enc)
     turret_angle = angle
     if not wait:
-        return
+        return True
     t0 = time.time()
     tol = TURRET_SETTLE_TOL_DEG * abs(TURRET_GEAR_RATIO)
+    pos = None
+    arrived = False
     while time.time() - t0 < TURRET_MOVE_TIMEOUT_SEC:
         pos = turret_motor.get_position()
         if pos is not None and abs(pos - target_enc) <= tol:
+            arrived = True
             break
         time.sleep(0.01)
-    time.sleep(0.04)  # let the sensor take a fresh ping at the new angle
+    time.sleep(0.08)  # let the sensor take a fresh ping at the new angle (EV3 US pings ~every 30-50 ms)
+    if not arrived and pos is not None:
+        actual_deg = (pos - turret_zero_enc) / TURRET_GEAR_RATIO
+        err_deg = abs(actual_deg - angle)
+        if err_deg > 10.0:
+            print(f"  [TURRET] timeout aiming {angle:+.0f} deg (at {actual_deg:+.0f} deg)")
+        return err_deg <= 15.0
+    return True
 
 
 def turret_at_target() -> bool:
@@ -783,14 +797,27 @@ def turret_at_target() -> bool:
     return pos is not None and abs(pos - target) <= TURRET_SETTLE_TOL_DEG * abs(TURRET_GEAR_RATIO)
 
 
-def check_direction_distance(rel_angle_deg: float, restore: bool = True) -> float:
+def check_direction_distance(rel_angle_deg: float, restore: bool = True, recheck_close: bool = False) -> float:
     """
     Distance (cm) in direction rel_angle_deg (-90 left, 0 forward, +90 right).
     Turret if present (mapped to TURRET_LEFT_DEG / 0 / TURRET_RIGHT_DEG), else pivots the whole robot.
+    recheck_close: in Phase 1 street stops, if a side scan reads unusually close (< SIDE_RECHECK_CM, e.g. 8-9 cm
+    when stopped next to a front wall) or the turret stalled, back up SIDE_RECHECK_BACK_CM into the clear street
+    behind, re-aim the turret, re-read, and step back forward.
     """
     if turret_present:
-        set_turret_angle(turret_target_for(rel_angle_deg))
+        target = turret_target_for(rel_angle_deg)
+        ok = set_turret_angle(target)
         dist = get_us_cm(samples=US_SCAN_SAMPLES, extra=US_SCAN_EXTRA, threshold=wall_threshold(rel_angle_deg))
+        if recheck_close and abs(rel_angle_deg) > 45.0 and SIDE_RECHECK_CM > 0 and (dist < SIDE_RECHECK_CM or not ok):
+            saved_h = theta
+            print(f"  [US] close/stalled side read ({dist:.1f} cm @ {target:+.0f} deg): "
+                  f"backing {SIDE_RECHECK_BACK_CM:.0f} cm to confirm")
+            drive_straight_distance(SIDE_RECHECK_BACK_CM, forward=False, hold_heading=saved_h, speed_dps=160)
+            set_turret_angle(target)
+            dist = get_us_cm(samples=US_SCAN_SAMPLES, extra=US_SCAN_EXTRA, threshold=wall_threshold(rel_angle_deg))
+            drive_straight_distance(SIDE_RECHECK_BACK_CM, forward=True, hold_heading=saved_h, speed_dps=160)
+            print(f"  [US] confirmed side read: {dist:.1f} cm")
         if restore and abs(rel_angle_deg) > 1.0:
             set_turret_angle(0.0)
         return dist
@@ -1326,7 +1353,7 @@ def drive_run(
                 arrived = turret_at_target() or time.time() - glance["t"] > TURRET_MOVE_TIMEOUT_SEC
                 if arrived and glance["at"] is None:
                     glance["at"] = time.time()
-                if glance["at"] is not None and time.time() - glance["at"] >= 0.04:   # fresh ping at the angle
+                if glance["at"] is not None and time.time() - glance["at"] >= 0.07:   # fresh ping at the angle
                     if glance["stage"] == "out":
                         if "ready" not in glance:          # learn how far the robot drives while the turret swings
                             glance["ready"] = u
@@ -1401,6 +1428,7 @@ def drive_run(
 # inside the tile centreline: the funnel's outer tip and round back swing outward during the turn. Funnel,
 # ideal arc: clearance inside = radius - 12, outside 3.0 / 2.5 / 1.8 cm at 14 / 14.5 / 15.24; sim lowest 1.69 cm at 14.5.
 ARC_RADIUS_CM = 14.5          # axle path radius around the inside house corner (15.24 = tile centreline)
+ARC_MAX_DPS = 220             # Speed cap (centre wheel dps) on tight corner/origin arcs to prevent outer-wheel slip
 ARC_K_RADIAL_DEG_PER_CM = 4.0 # heading correction per cm off the arc
 ARC_MAX_CORR_DEG = 15.0       # Most heading correction (deg) used to stay on an arc
 ARC_KP_HEADING = 4.0          # wheel dps of differential per degree of heading error on the arc
@@ -1458,7 +1486,7 @@ def drive_arc_about(px: float, py: float, radius: float, h_in: float, h_out: flo
         err = minimal_angle_diff(target % 360.0, theta)
         swept = abs(minimal_angle_diff(theta, h_in))
         remaining = radius * math.radians(max(0.0, turn - swept)) + then_cm
-        base = compute_trapezoidal_dps(time.time() - t0, max(remaining, 1.0), speed_dps)
+        base = compute_trapezoidal_dps(time.time() - t0, max(remaining, 1.0), min(speed_dps, ARC_MAX_DPS))
         corr = max(-MAX_HEADING_CORR_DPS, min(MAX_HEADING_CORR_DPS, ARC_KP_HEADING * err))
         drive(base * (1 + s * ff) + corr, base * (1 - s * ff) - corr)
         time.sleep(0.006)

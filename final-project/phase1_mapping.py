@@ -171,13 +171,13 @@ def look_around(current, heading, street, blocked, visited, known, full=False):
         if d not in read:
             if blind_ok:
                 return True
-            read[d] = measured[d] = core.check_direction_distance(REL[d], restore=False)
+            read[d] = measured[d] = core.check_direction_distance(REL[d], restore=False, recheck_close=True)
         return read[d] >= core.wall_threshold(d)
 
     if full:
         for d in ("F", "L", "R"):
             if d not in read:
-                read[d] = measured[d] = core.check_direction_distance(REL[d], restore=False)
+                read[d] = measured[d] = core.check_direction_distance(REL[d], restore=False, recheck_close=True)
     exit_possible = len(street) > 1 and maybe(can_open, "L") and maybe(can_open, "R")
     # Street running along the table edge (one side off-table, the other in-bounds): no house can sit off-table,
     # so if BOTH the in-bounds side AND forward are open (not a corner with a wall ahead), the street has ended.
