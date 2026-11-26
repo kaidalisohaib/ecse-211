@@ -50,7 +50,7 @@ DUMP_BACK_LIP_CM = 9.0            # MEASURE (BACK only): axle to the rear edge t
 DUMP_BACK_OVERHANG_CM = 2.0       # BACK: wanted overhang of that lip past the table edge
 DUMP_BACK_SUPPORT_CM = 8.0        # MEASURE (BACK only): axle to the rearmost ground contact (caster / skid)
 DUMP_BACK_EDGE_MARGIN_CM = 2.0    # BACK: that contact stays at least this far inside the table edge
-EDGE_LANE_SHIFT_CM = 3.0          # Drive this much closer to the table edge on the drop-off row (MEASURE wheel margin)
+EDGE_LANE_SHIFT_CM = 5.0          # Drive this much closer to the table edge on the drop-off row (MEASURE wheel margin)
 DUMP_POINT_FORWARD_CM = -10.0     # MEASURE: middle of the bin's pour opening ahead of the wheel axle (- = behind):
                                   # centres the pour on the bucket. Robot photos 2026-11-22: bin ~10 cm behind
 DROP_APPROACH_DPS = 220       # Slower wheel speed (deg/s) for the end of the last run into the drop-off
