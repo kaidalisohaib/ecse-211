@@ -38,8 +38,8 @@ import vizlog
 
 # ==================== HARDWARE PORT CONFIGURATION ====================
 # Ports as wired on the robot (lab, 2026-11-22)
-LEFT_DRIVE_PORT = "C"
-RIGHT_DRIVE_PORT = "D"
+LEFT_DRIVE_PORT = "C"         # BrickPi port of the left wheel motor
+RIGHT_DRIVE_PORT = "D"        # BrickPi port of the right wheel motor
 TURRET_PORT = "B"             # Phase 1: ultrasonic turret (the belt's port: the belt motor isn't plugged in then)
 DUMP_PORT = "A"               # Phase 2: bin tilt (dump)
 ROLLER_MOTOR_PORT = "B"       # Phase 2: pinch belt (conveyor)
@@ -50,13 +50,13 @@ RIGHT_COLOR_PORT = 2          # Downward right colour sensor
 ULTRASONIC_PORT = 4           # Turret ultrasonic (Phase 1) / fixed ultrasonic (Phase 2, optional)
 
 # ==================== GEOMETRY & CALIBRATION CONSTANTS ====================
-TILE_SIZE = 30.48
+TILE_SIZE = 30.48             # Size of one grid tile (cm), 12 in
 WHEEL_RADIUS = 2.10           # Overridden by calibration_params.json
-LEFT_WHEEL_SCALE = 1.0000
-RIGHT_WHEEL_SCALE = 1.0000
+LEFT_WHEEL_SCALE = 1.0000     # Left wheel distance multiplier (1 = nominal; the auto-tuner writes it to calibration_params.json)
+RIGHT_WHEEL_SCALE = 1.0000    # Right wheel distance multiplier (1 = nominal; the auto-tuner writes it to calibration_params.json)
 TRACK_WIDTH = 13.45           # measured 2026-11-24: tyre centre-to-centre ((11.4 inner + 15.5 outer) / 2).
 TRACK_WIDTH_CW = 13.45        # calibration_params.json overrides these three if present
-TRACK_WIDTH_CCW = 13.45
+TRACK_WIDTH_CCW = 13.45       # Track width used for counter-clockwise (left) turns (cm)
 
 # Colour sensors, relative to the wheel-axle midpoint (cm).
 # Colour sensors: distance ahead of the wheel axle, per phase (MEASURE). Negative = behind the axle,
@@ -83,26 +83,26 @@ EXPLORE_DPS = 320             # Phase 1 runs inside the street
 SWEEP_DPS = 170               # Phase 2 sweeping speed (roller catch rate decides this; bench-test it)
 MIN_DRIVE_DPS = 50            # Launch / final creep speed
 LINE_CROSS_MAX_DPS = 280      # Speed cap while a colour sensor is inside a line window (snap precision)
-ACCEL_RAMP_SEC = 0.30
+ACCEL_RAMP_SEC = 0.30         # Time (s) to ramp from standstill up to full speed at the start of a run
 DECEL_DIST_CM = 7.0           # Decelerate over the last 7 cm of a run (only at run ends now)
 
 TURN_DPS_MAX = 240            # Peak in-place turn wheel speed (~84 deg/s of robot rotation)
-TURN_DPS_MIN = 40
+TURN_DPS_MIN = 40             # Slowest wheel speed (deg/s) in an in-place turn, so the end of the turn doesn't stall
 KP_TURN = 5.0                 # wheel dps per degree of heading error
-TURN_TOLERANCE_DEG = 0.8
+TURN_TOLERANCE_DEG = 0.8      # An in-place turn is done when the heading is within this many degrees
 KP_DRIVE_HEADING = 2.5        # wheel dps of differential per degree of heading error
-MAX_HEADING_CORR_DPS = 45
+MAX_HEADING_CORR_DPS = 45     # Most wheel speed difference (deg/s) used to hold the heading while driving straight
 K_LATERAL_DEG_PER_CM = 1.5    # cross-track: degrees of heading correction per cm off the lane
-MAX_LATERAL_STEER_DEG = 6.0
+MAX_LATERAL_STEER_DEG = 6.0   # Most the robot steers (deg) to get back onto its lane
 
 # ==================== ULTRASONIC & TURRET (MEASURE / TUNE) ====================
 USE_TURRET = True             # Phase 1 hardware has the turret (TURRET_PORT)
 TURRET_GEAR_RATIO = 1.0       # motor degrees per turret degree
 TURRET_LEFT_DEG = -110.0      # Turret angle (deg) when looking left (replaces -90; tune for gear slack / cable)
 TURRET_RIGHT_DEG = 110.0      # Turret angle (deg) when looking right (replaces +90)
-TURRET_DPS = 400
-TURRET_SETTLE_TOL_DEG = 2.0
-TURRET_MOVE_TIMEOUT_SEC = 1.0
+TURRET_DPS = 400              # Turret motor speed (deg/s)
+TURRET_SETTLE_TOL_DEG = 2.0   # The turret counts as arrived when within this many degrees of its target
+TURRET_MOVE_TIMEOUT_SEC = 1.0 # Stop waiting for the turret after this long (s), even if it isn't there yet
 GLANCE_WHILE_DRIVING = True   # side glances don't pause the drive loop (steering, odometry, line checks keep
                               # running while the turret swings out and back); False = old blocking glance
 US_FORWARD_OFFSET_CM = 8.0    # MEASURE: turret axis (or fixed sensor) ahead of the wheel axle
@@ -115,7 +115,7 @@ US_SCAN_SAMPLES = 5           # stationary scans: median of 5 = right even if 2 
 US_SCAN_EXTRA = 4             # ...and if those 5 disagree about wall/open (some below the house threshold, some
                               # above), take up to this many more before deciding (costs time only when unsure)
 US_GLANCE_SAMPLES = 3         # side glance while driving: 3 so the median can outvote one bad reading
-US_GLANCE_EXTRA = 2
+US_GLANCE_EXTRA = 2           # ...and up to this many more if those 3 disagree about house/open
 US_FORWARD_WINDOW = 5         # forward watch: rolling median of the last N single readings
 US_SPACING_SEC = 0.015        # MEASURE (bench [3]): time between samples; less than the sensor's own update
                               # period just reads the same ping twice
@@ -123,8 +123,8 @@ USE_US_LATERAL_FIX = False    # Correct sideways position from side-wall reading
                               # real readings near house corners can be off. Turn on only if bench_tests [7] is < 1 cm.
 USE_US_FORWARD_FIX = False    # Use forward wall reading at stops to correct along-track (needs offsets measured)
 US_FIX_GATE_CM = 4.0          # Ignore US corrections that disagree with odometry by more than this
-US_LATERAL_BLEND_STOPPED = 0.7
-US_LATERAL_BLEND_MOVING = 0.15
+US_LATERAL_BLEND_STOPPED = 0.7# Side-wall position fix, standing: fraction of the measured error applied (0-1)
+US_LATERAL_BLEND_MOVING = 0.15# Side-wall position fix, while driving: fraction applied per reading (0-1)
 SIDE_SAMPLE_WINDOW = (-10.0, 4.0)  # Sample a tile's side wall while the sensor is this far (cm) from its centre
 MAX_RUN_TILES = 5             # "side" explore mode: never trust one forward reading for more than this many tiles
 FORWARD_STOP_CM = 45.0        # Forward watch: a reading below this means "house within the next tile or so";
@@ -153,35 +153,35 @@ FIXED_US_ANGLE = None         # Phase 2: angle of a fixed ultrasonic (+90 right,
 ROLLER_SWEEP_POWER = -50      # Belt motor power (%) while sweeping: lab-tested 2026-11-22 (hardware tester "p -50").
                               # Sign = intake direction. None = run at ROLLER_SWEEP_DPS instead
 ROLLER_SWEEP_DPS = 900        # only used when ROLLER_SWEEP_POWER is None
-ROLLER_POWER_LIMIT = 85
+ROLLER_POWER_LIMIT = 85       # Not used by the code at the moment
 DUMP_TILT_DEG = 140           # Motor A rotation that tips the bin (lab 2026-11-22: -140 empties it)
 DUMP_PLUS = None              # Where the bin pours when motor A turns +: "RIGHT", "LEFT", "BACK" or None (bench test 9)
 DUMP_MINUS = "LEFT"           # Where it pours when motor A turns - (user 2026-11-24: our robot always dumps on the left)
                               # Phase 2 parks for whichever of the two is quicker; set one to None to force the other.
-DUMP_HOLD_SEC = 1.2
+DUMP_HOLD_SEC = 1.2           # Time (s) the bin stays tipped so the pom-poms fall out
 DUMP_SHAKES = 2               # after tipping: back DUMP_SHAKE_DEG toward rest and down again, this many times
 DUMP_SHAKE_DEG = 50           # (lab: +50 / -50 shakes the last pom-poms out)
 
 # ==================== TIME BUDGET (TUNE with real runs) ====================
-PHASE_TIME_LIMIT_SEC = 120.0
-TIME_SAFETY_MARGIN_SEC = 8.0
+PHASE_TIME_LIMIT_SEC = 120.0  # Hard time limit of each phase (s)
+TIME_SAFETY_MARGIN_SEC = 8.0  # The watchdog keeps this many seconds spare when deciding whether there is time left
 EST_SEC_PER_TILE = 2.9        # Average transit time per tile inside a run
 EST_SEC_PER_RUN = 1.6         # Extra per run (accel/decel)
-EST_SEC_PER_TURN = 1.8
-EST_DUMP_SEC = 6.0
+EST_SEC_PER_TURN = 1.8        # Time estimate (s) for one 90 deg turn
+EST_DUMP_SEC = 6.0            # Time estimate (s) for the whole dump (tip, shake, back)
 EST_HOME_STEP_SEC = 5.0       # Tile (0,0) centre -> origin intersection
 
 # Table size in tiles (tiles are named by their lower-left intersection). One table: 9 x 5 tiles, X -1..7,
 # Y -1..3, origin one tile in from the lower-left corner. Two tables side by side: TILE_X_MAX = 16; one above
 # the other: TILE_Y_MAX = 8. Keep the MINs at -1 (the origin stays at the lower-left).
 TILE_X_MIN = -1                # one per line: the dashboard (and its Constants panel) only reads NAME = value
-TILE_X_MAX = 7
-TILE_Y_MIN = -1
-TILE_Y_MAX = 3
+TILE_X_MAX = 7                # Rightmost tile column on the table
+TILE_Y_MIN = -1               # Bottom tile row on the table
+TILE_Y_MAX = 3                # Top tile row on the table
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
-CALIBRATION_FILE = os.path.join(_HERE, "calibration_params.json")
-MAP_FILE = os.path.join(_HERE, "street_map.json")
+CALIBRATION_FILE = os.path.join(_HERE, "calibration_params.json")# Where the auto-tuner saves wheel radius, scales and track width
+MAP_FILE = os.path.join(_HERE, "street_map.json")# Where Phase 1 saves the street map for Phase 2
 
 # ==================== GLOBAL HARDWARE & ODOMETRY STATE ====================
 left_motor = Motor(LEFT_DRIVE_PORT)
@@ -203,7 +203,7 @@ travel_cm = 0.0               # Cumulative signed distance driven by the axle mi
 # where any new error built up gradually).
 _hdg_ref_travel = 0.0
 _hdg_ref_weight = 1.0
-HEADING_BACKFIX_MAX_CM = 60.0
+HEADING_BACKFIX_MAX_CM = 60.0 # When a grid line corrects the heading, the position is also corrected for at most this many cm driven
 
 prev_left_deg = None
 prev_right_deg = None
@@ -585,7 +585,7 @@ def drive_straight_distance(distance_cm: float, forward: bool = True, hold_headi
 
 # ==================== ORIGIN <-> TILE (0,0) TRANSITION ====================
 # The origin is a grid intersection shared by four tiles; leave and come back through whichever is best.
-ORIGIN_TILES = [(0, 0), (-1, 0), (0, -1), (-1, -1)]
+ORIGIN_TILES = [(0, 0), (-1, 0), (0, -1), (-1, -1)]# The four tiles around the origin (never houses)
 
 
 def _origin_step_heading(tile) -> float:
@@ -1402,7 +1402,7 @@ def drive_run(
 # ideal arc: clearance inside = radius - 12, outside 3.0 / 2.5 / 1.8 cm at 14 / 14.5 / 15.24; sim lowest 1.69 cm at 14.5.
 ARC_RADIUS_CM = 14.5          # axle path radius around the inside house corner (15.24 = tile centreline)
 ARC_K_RADIAL_DEG_PER_CM = 4.0 # heading correction per cm off the arc
-ARC_MAX_CORR_DEG = 15.0
+ARC_MAX_CORR_DEG = 15.0       # Most heading correction (deg) used to stay on an arc
 ARC_KP_HEADING = 4.0          # wheel dps of differential per degree of heading error on the arc
 
 
@@ -1790,7 +1790,7 @@ def should_abort_for_time(phase_start_time: float, seconds_needed: float) -> boo
 
 
 # ==================== DROP-OFF PLANNING ====================
-DUMP_DIRECTIONS = ("RIGHT", "LEFT", "BACK")
+DUMP_DIRECTIONS = ("RIGHT", "LEFT", "BACK")# Names the code accepts for where the bin pours
 
 
 POUR_HOUSE_MARGIN_CM = 1.0    # a pour shifted toward a house along the edge stops with the robot this far from its line

@@ -48,10 +48,10 @@ from snowplow_core import (
 )
 
 # Sample-map coordinates (Figure 1). Only used if the operator just presses Enter.
-DEFAULT_S1 = (1, 3)
-DEFAULT_S2 = (1, 2)
-DEFAULT_D1 = (2, -1)
-DEFAULT_D2 = (3, -1)
+DEFAULT_S1 = (1, 3)           # Gate point s1 used if you just press Enter (sample map)
+DEFAULT_S2 = (1, 2)           # Gate point s2 used if you just press Enter (sample map)
+DEFAULT_D1 = (2, -1)          # Drop-off point d1 used if you just press Enter (sample map)
+DEFAULT_D2 = (3, -1)          # Drop-off point d2 used if you just press Enter (sample map)
 
 SCOUT_DROPOFF_ON_RETURN = False  # Drive through the drop-off tile on the way home (if time allows). Not needed while
                                  # Phase 2's TRUST_MAP is on (it plans on any tile that isn't a street wall); turn
@@ -118,7 +118,7 @@ def record_scan(tile, heading, scan, blocked):
                 blocked.add(t)
 
 
-REL = {"L": -90.0, "F": 0.0, "R": 90.0}
+REL = {"L": -90.0, "F": 0.0, "R": 90.0}# Turret angle for each look direction (left, forward, right)
 FREE = set()   # tiles known to have no house (set by run_phase1): origin tiles, the drop-off tile, tiles driven
 NEVER_STREET = set()   # the origin tiles and the drop-off tile (the robot starts / pours there)
 

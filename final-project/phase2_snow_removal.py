@@ -53,7 +53,7 @@ DUMP_BACK_EDGE_MARGIN_CM = 2.0    # BACK: that contact stays at least this far i
 EDGE_LANE_SHIFT_CM = 3.0          # Drive this much closer to the table edge on the drop-off row (MEASURE wheel margin)
 DUMP_POINT_FORWARD_CM = -10.0     # MEASURE: middle of the bin's pour opening ahead of the wheel axle (- = behind):
                                   # centres the pour on the bucket. Robot photos 2026-11-22: bin ~10 cm behind
-DROP_APPROACH_DPS = 220
+DROP_APPROACH_DPS = 220       # Slower wheel speed (deg/s) for the end of the last run into the drop-off
 DROP_APPROACH_CM = core.TILE_SIZE  # ...over the last run's last this many cm (it cruises before that)
 DROP_LANE_GAIN = 5.0              # last drop-off run: cross-track deg per cm (drive_run's default 1.5 needs ~40 cm)
 DROP_MAX_STEER_DEG = 15.0         # ...and its steering limit (default 6)
@@ -70,7 +70,7 @@ DROP_STYLES = ("direct", "along", "turn")  # "direct" = drive in facing the buck
                                    # "along" = arrive along the edge already parallel; "turn" = arrive along the
                                    # edge the other way, turn 180 in place (side pours). Cheapest is used.
 ROLLER_ON_DURING_TRANSIT = True   # Keep the roller turning until the dump so nothing falls back out
-ROLLER_FLUSH_SEC = 0.5
+ROLLER_FLUSH_SEC = 0.5        # After the sweep, pause this long (s) with the belt running so the last pom-poms reach the bin
 TURN_LANE_RUN_CM = 25.0           # side-pour drop-off: the last run is at least this long (reverses first if not)
                                   # to reach its lane: the edge lane, or the lane off a house beside the tile
 LANE_MISS_CM = 1.0                # ...when it starts more than this off its lane (the arc onto it couldn't end there)
