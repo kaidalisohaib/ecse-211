@@ -27,7 +27,6 @@ from snowplow_core import (
     EXPLORE_DPS,
     MAP_FILE,
     MAX_RUN_TILES,
-    WALL_THRESHOLD_CM,
     drive_run,
     estimate_path_seconds,
     free_tiles_ahead,
@@ -113,7 +112,7 @@ def select_entrance_candidate(s1: tuple[int, int], s2: tuple[int, int]) -> dict:
 def record_scan(tile, heading, scan, blocked):
     """Marks in-bounds neighbours seen as walls in the scan as blocked (the 4 origin tiles are never houses)."""
     for key, rel in (("F", 0), ("R", 90), ("L", -90)):
-        if scan[key] < WALL_THRESHOLD_CM:
+        if scan[key] < core.wall_threshold(key):
             t = tile_step(tile, (heading + rel) % 360)
             if is_tile_in_bounds(*t) and t not in core.ORIGIN_TILES:
                 blocked.add(t)
@@ -164,7 +163,7 @@ def look_around(current, heading, street, blocked, visited, known, full=False):
     measured = {}
 
     def maybe(cand, d):
-        return cand[d] and read.get(d, 255.0) >= WALL_THRESHOLD_CM
+        return cand[d] and read.get(d, 255.0) >= core.wall_threshold(d)
 
     def is_open(cand, d, blind_ok=False):
         if not cand[d]:
@@ -173,7 +172,7 @@ def look_around(current, heading, street, blocked, visited, known, full=False):
             if blind_ok:
                 return True
             read[d] = measured[d] = core.check_direction_distance(REL[d], restore=False)
-        return read[d] >= WALL_THRESHOLD_CM
+        return read[d] >= core.wall_threshold(d)
 
     if full:
         for d in ("F", "L", "R"):
@@ -189,7 +188,7 @@ def look_around(current, heading, street, blocked, visited, known, full=False):
             s = "L" if l_in else "R"
             if maybe(can_open, s) and maybe(can_open, "F"):
                 edge_side = s
-    wall_ahead = read.get("F", 255.0) < WALL_THRESHOLD_CM
+    wall_ahead = read.get("F", 255.0) < core.WALL_THRESHOLD_CM
     if STREET_RULES and not full and wall_ahead:
         exit_possible = False                  # a house straight ahead: this is a corner, not the street's end
     if STREET_RULES and not full and len(street) > 1 and not wall_ahead and on_edge(current):
@@ -292,7 +291,7 @@ def explore_street(start_tile, heading, scan, street, visited, blocked, traverse
                 # The forward watch stopped us one tile short of a house. Confirm it standing still (turret
                 # already forward, ~0.1 s): a ghost echo while driving must not become a house on the map.
                 known["F"] = core.check_direction_distance(0.0, restore=False)
-                if known["F"] >= WALL_THRESHOLD_CM:
+                if known["F"] >= core.WALL_THRESHOLD_CM:
                     print(f"  [LOOK] forward watch saw a house ahead of {current}, standing still it reads "
                           f"{known['F']:.0f} cm: no house")
             if res["stop_reason"] == "side_open":
@@ -311,16 +310,16 @@ def explore_street(start_tile, heading, scan, street, visited, blocked, traverse
             choice, read, blind = look_around(current, heading, street, blocked, visited, known, full)
             record_scan(current, heading, {d: read.get(d, 255.0) for d in REL}, blocked)
             txt = " ".join((f"{d}={read[d]:.0f}" if d not in known else
-                            f"{d}={'open' if read[d] >= WALL_THRESHOLD_CM else 'house'}(seen)")
+                            f"{d}={'open' if read[d] >= core.wall_threshold(d) else 'house'}(seen)")
                            for d in ("L", "F", "R") if d in read)
             print(f"  [LOOK @ {current} h={heading}] {txt or 'nothing to measure'}"
                   + (f" -> {choice}" if choice else "") + (" (only way left, not measured)" if blind else ""))
         else:
             scan = scan_walls(heading, current)
             record_scan(current, heading, scan, blocked)
-            l_open = scan["L"] >= WALL_THRESHOLD_CM and is_tile_in_bounds(*t_l)
-            f_open = scan["F"] >= WALL_THRESHOLD_CM and is_tile_in_bounds(*t_f)
-            r_open = scan["R"] >= WALL_THRESHOLD_CM and is_tile_in_bounds(*t_r)
+            l_open = scan["L"] >= core.SIDE_WALL_THRESHOLD_CM and is_tile_in_bounds(*t_l)
+            f_open = scan["F"] >= core.WALL_THRESHOLD_CM and is_tile_in_bounds(*t_f)
+            r_open = scan["R"] >= core.SIDE_WALL_THRESHOLD_CM and is_tile_in_bounds(*t_r)
             print(f"  [SCAN @ {current} h={heading}] L={scan['L']:.0f} F={scan['F']:.0f} R={scan['R']:.0f}")
             read, blind = scan, False
             if len(street) > 1 and l_open and r_open:
@@ -489,19 +488,19 @@ def run_phase1(s1=None, s2=None, d1=None, d2=None):
         # on both sides does; one open side means outside (if that's wrong, the one-tile check below catches it).
         d = min(sides, key=lambda d: abs(core.turret_target_for(REL[d]) - core.turret_angle))
         readings = {d: core.check_direction_distance(REL[d], restore=False)}
-        if readings[d] < WALL_THRESHOLD_CM and len(sides) == 2:
+        if readings[d] < core.SIDE_WALL_THRESHOLD_CM and len(sides) == 2:
             o = "R" if d == "L" else "L"
             readings[o] = core.check_direction_distance(REL[o], restore=False)
         vizlog.emit("scan", tile=list(current), h=toward_gate, **{k: round(v, 1) for k, v in readings.items()})
         record_scan(current, toward_gate, {"L": 255.0, "F": 255.0, "R": 255.0, **readings}, blocked)
-        inside = all(v < WALL_THRESHOLD_CM for v in readings.values())
+        inside = all(v < core.SIDE_WALL_THRESHOLD_CM for v in readings.values())
         print(f"  [LOOK @ {current} h={toward_gate}] " + " ".join(f"{k}={v:.0f}" for k, v in readings.items())
               + f" -> {'inside' if inside else 'outside'} the street")
         scan = {"F": 255.0}                    # the gate side is open by definition; the run watches ahead itself
     else:
         scan = scan_walls(toward_gate, current)
         record_scan(current, toward_gate, scan, blocked)
-        inside = scan["L"] < WALL_THRESHOLD_CM and scan["R"] < WALL_THRESHOLD_CM
+        inside = scan["L"] < core.SIDE_WALL_THRESHOLD_CM and scan["R"] < core.SIDE_WALL_THRESHOLD_CM
     if inside:
         # Houses beside us: we are standing in the first street tile; the street runs away from the gate.
         print(f"[MAP] Houses beside {current}: first street tile; street runs away from the gate.")

@@ -2,7 +2,43 @@
 
 Newest first. Group 13, ECSE 211 F26 final project.
 
-## 2026-11-25 (newest): back to flying line snaps
+## 2026-11-25 (newest): side glance timing, side threshold, no Phase 2 S-curve
+
+User (from the lab): (1) the side glance checks "at a bad timing when it's in between two houses"; (2) did we set
+`SENSOR_SKEW_DEG` to 0? (3) how many side samples: "at the exit it gets a false positive and thinks there is a
+wall when there isn't"; (4) Phase 2: don't do the S initial shape ("loss of accuracy with an offset"); (5) the
+drop-off left "a certain distance from the edge", is that normal?
+- (1) **Glance timing (fixed).** The swing started only after the colour sensors left the grid line, i.e. with the
+  axle 2.2 cm before the tile centre (sensors 5 cm behind the axle), and the robot drives ~4.5 cm while the turret
+  swings 110 deg; the turret is 8 cm ahead of the axle. So it read **10.7 cm past the tile centre** (sim, every
+  glance 10.6-11.1), 2 cm from the end of a 25.4 cm box, next to the ~5 cm gap to the next box; with a turret at
+  half speed (`TURRET_DPS` 200) **13.5-13.9 cm = in the gap**. Now the swing starts early by the distance driven
+  while it swings (learned per glance, `glance_lead_cm`), aiming the reading at `GLANCE_AT_CM` = 4 cm past the
+  centre (not 0: at an exit tile the last house's corner behind is then ~23 cm away; 26 at 4). The reading waits
+  while a colour sensor is still waiting for a line (it pauses the loop ~50 ms). Sim box houses, 80 boards: reads
+  at 3.9-5.5 cm (median 4.4); half-speed turret 3.5-5.8 (median 4.4). The sim's beam is narrow (+-7 deg), so
+  neither version had false readings there; the real beam is wider.
+- (2) `SENSOR_SKEW_DEG` came in as 0.0 in the lab commit 5e43e7b and was never changed in git; nothing measures
+  it. A Constants-panel edit on the Pi would only be on the Pi (Pi not reachable this session).
+- (3) Samples: standing L/R/F checks 5 readings, up to 4 more if they disagree about the threshold, median;
+  glances 3 (+2); forward watch rolling median of 5. More samples don't fix a repeatable echo. Likely cause: at
+  the exit tile the corner of the last house (diagonally behind) is ~24-26 cm from the sensor, right at the old
+  shared 25 cm threshold (closer if the turret physically points back at the 110 setting). New
+  `SIDE_WALL_THRESHOLD_CM = 22` for side readings (glances, standing L/R, gate check); forward stays
+  `WALL_THRESHOLD_CM = 25`. Sim box houses: walls read median 16.5, max 19.6 cm; open sides >= 45.8. To check on
+  the robot: the `[LOOK @ ...]` line at the exit prints the side cm (22-25 = this; ~10 = the turret sees its own
+  robot or points far back).
+- (4) `ORIGIN_S_CURVE = False` (new, core): Phase 2 turns in place on the origin and takes the quarter arc onto the
+  tile, as Phase 1 does. Sim: +2.2-2.9 s on boards whose first run goes straight on (+0.1-1.1 s median per kind).
+- (5) By design: the axle ends `EDGE_LANE_SHIFT_CM` (3, never measured) toward the edge from the tile centre =
+  12.2 cm from the edge (sim 11.9-13.0). Whether the pour clears the edge depends on the bin's left lip.
+- Sim vs HEAD fbf23ab (`sim/session/lab_nov22/M_*` new, `M0_*` old): 1t 144 vs 145/150 (random-44 P2 118.3 ->
+  120.6 s: the S-curve), box 144 vs 145 (same board), all kinds n 40 1t 39/39, loose 38/38, edge 37/37, 18x5
+  25/25, 9x10 27/26; maps identical, P1 unchanged (+-0.2 s). Lowest P2 clearance 0.01 cm (random-15) / 0.06
+  (random-77 box): same spots as before (drop-off move along the edge), different noise draws, not the S-curve
+  (both leave the origin heading 90). Bench sim 10/10.
+
+## 2026-11-25: back to flying line snaps
 
 User: switch to flying ("the last one we tested and that worked"). `LINE_SQUARE_MODE = "flying"` (sim `I_fly`:
 145/150, P1 / P2 ~4 s faster each than "stop"); "stop" (with the fix below) stays available.

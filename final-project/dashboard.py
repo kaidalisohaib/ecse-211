@@ -81,7 +81,7 @@ def read_constants(path=os.path.join(HERE, "snowplow_core.py")):
             "ULTRASONIC_PORT": 3, "LINE_THRESHOLD": 30, "DRIVE_POLARITY": -1, "ROLLER_SWEEP_DPS": 900,
             "ROLLER_SWEEP_POWER": None, "DUMP_PLUS": None, "DUMP_MINUS": "LEFT",
             "TILE_X_MIN": -1, "TILE_X_MAX": 7, "TILE_Y_MIN": -1, "TILE_Y_MAX": 3,
-            "WALL_THRESHOLD_CM": 25.0, "FORWARD_STOP_CM": 45.0}
+            "WALL_THRESHOLD_CM": 25.0, "SIDE_WALL_THRESHOLD_CM": 22.0, "FORWARD_STOP_CM": 45.0}
     try:
         tree = ast.parse(open(path).read())
         for node in tree.body:
@@ -1134,6 +1134,7 @@ class Hub:
                 "scripts": [{"pid": p, "name": n} for p, n in self.scripts], "released": self.released,
                 "battery": battery, "phase": self.phase, "colour_mode": self.colour_mode,
                 "line_threshold": self.c["LINE_THRESHOLD"], "wall_threshold": self.c["WALL_THRESHOLD_CM"],
+                "side_wall_threshold": self.c["SIDE_WALL_THRESHOLD_CM"],
                 "forward_stop": self.c["FORWARD_STOP_CM"], "belt_dps": self.c["ROLLER_SWEEP_DPS"],
                 "belt_power": self.c["ROLLER_SWEEP_POWER"],
                 "dump_plus": self.c["DUMP_PLUS"], "dump_minus": self.c["DUMP_MINUS"],
@@ -1479,7 +1480,7 @@ function drawScope(cv,now){const p=cv.dataset.p,s=S&&S.sensors[p];if(!s)return;
   if(!isFinite(lo)){lo=0;hi=1;}if(hi-lo<5)hi=lo+5;}
  const Y=v=>H-3-(H-6)*(Math.min(hi,Math.max(lo,v))-lo)/(hi-lo),X=t=>W*(1-(now-t)/WIN);
  const th=us?S.wall_threshold:(rgb?null:S.line_threshold);
- const marks=us?[[S.wall_threshold,'#f2b33d'],[S.forward_stop,'#8f979f']]:(rgb?[]:[[S.line_threshold,'#f2b33d'],[s.suggest,'#3fb27f']]);
+ const marks=us?[[S.wall_threshold,'#f2b33d'],[S.side_wall_threshold,'#e0637a'],[S.forward_stop,'#8f979f']]:(rgb?[]:[[S.line_threshold,'#f2b33d'],[s.suggest,'#3fb27f']]);
  c.lineWidth=1;c.setLineDash([3,3]);
  for(const [v,col] of marks){if(v==null)continue;const y=Math.round(Y(v))+.5;c.strokeStyle=col;c.beginPath();c.moveTo(0,y);c.lineTo(W,y);c.stroke();}
  c.setLineDash([]);c.lineWidth=1.6;c.lineJoin='round';c.lineCap='round';
@@ -1539,8 +1540,8 @@ function sensorCard(port,s,src){
  if(s.stale)stl=`<span class="dot off"></span>Last read by the job ${f1(s.age)} s ago`+(s.kind==='colour'?' (it only looks near grid lines)':'');
  if(st!=='VALID_DATA')return {head:h,body:`<div class="${st==='NOT_READ'?'dim':''}">${stl}</div>`};
  if(s.kind==='us'){const hv=s.value<S.wall_threshold;
-  return {head:h,body:`<div class="big${s.stale?' dim':''}"><span data-lv="${port}">${fmtUS(s.value)}</span><span class="tag${hv?' hot':''}" data-lw="${port}">${s.value>=250?'nothing':(hv?'HOUSE':'open')}</span></div><div class="note">${stl}. The code calls it a house below <span class="warn">${S.wall_threshold}</span> cm.</div>`,
-  foot:scope(port,'Every reading, last 10 s, 0 to 100 cm. Orange line: WALL_THRESHOLD_CM; grey: FORWARD_STOP_CM.')};}
+  return {head:h,body:`<div class="big${s.stale?' dim':''}"><span data-lv="${port}">${fmtUS(s.value)}</span><span class="tag${hv?' hot':''}" data-lw="${port}">${s.value>=250?'nothing':(hv?'HOUSE':'open')}</span></div><div class="note">${stl}. The code calls it a house below <span class="warn">${S.wall_threshold}</span> cm ahead, ${S.side_wall_threshold} cm to the side.</div>`,
+  foot:scope(port,'Every reading, last 10 s, 0 to 100 cm. Orange line: WALL_THRESHOLD_CM (ahead); pink: SIDE_WALL_THRESHOLD_CM; grey: FORWARD_STOP_CM.')};}
  const cal=s.cal||{};
  if(s.rgb){const [r,g,b]=s.rgb;const mx=Math.max(r,g,b,1);const css=`rgb(${(255*r/mx)|0},${(255*g/mx)|0},${(255*b/mx)|0})`;const j=s.judge;
   const jv=j?`<div class="meter"><i style="width:${Math.max(0,Math.min(100,j.f*100))}%"></i><s style="left:50%"></s></div>

@@ -107,9 +107,12 @@ GLANCE_WHILE_DRIVING = True   # side glances don't pause the drive loop (steerin
                               # running while the turret swings out and back); False = old blocking glance
 US_FORWARD_OFFSET_CM = 8.0    # MEASURE: turret axis (or fixed sensor) ahead of the wheel axle
 US_FACE_CM = 2.5              # MEASURE: turret axis to sensor face (fixed side mount: centreline to face)
-WALL_THRESHOLD_CM = 25.0      # Side/forward reading below this = house in the adjacent tile
+WALL_THRESHOLD_CM = 25.0      # Forward reading below this = house in the next tile
+SIDE_WALL_THRESHOLD_CM = 22.0 # Side reading (glance or standing) below this = house beside the tile. A house beside
+                              # reads ~13-17 cm (sim box houses: at most 19.6); at an exit, the corner of the last
+                              # house (diagonally behind) can echo at ~24-26 cm, under the old shared 25 cm
 US_SCAN_SAMPLES = 5           # stationary scans: median of 5 = right even if 2 of the 5 are bad
-US_SCAN_EXTRA = 4             # ...and if those 5 disagree about wall/open (some below WALL_THRESHOLD_CM, some
+US_SCAN_EXTRA = 4             # ...and if those 5 disagree about wall/open (some below the house threshold, some
                               # above), take up to this many more before deciding (costs time only when unsure)
 US_GLANCE_SAMPLES = 3         # side glance while driving: 3 so the median can outvote one bad reading
 US_GLANCE_EXTRA = 2
@@ -127,6 +130,11 @@ MAX_RUN_TILES = 5             # "side" explore mode: never trust one forward rea
 FORWARD_STOP_CM = 45.0        # Forward watch: a reading below this means "house within the next tile or so";
                               # stop on the tile centre just before it. Only close readings are trusted.
 GLANCE_SEC_EST = 0.6          # Rough duration of one side glance (turret out and back)
+GLANCE_AT_CM = 4.0            # Side glance while driving: the turret axis is this far past the tile centre when it
+                              # reads. The swing starts early by the distance the robot drives while the turret
+                              # swings out (learned from the glances). It used to read ~11 cm past the centre: 2 cm
+                              # from the ~5 cm gap between two 25.4 cm boxes (later still with a slower turret).
+                              # Not 0: at an exit tile the last house's corner (behind) is then ~23 cm away, 26 at 4
 # Robot outline for the visualizer, (lateral +right, forward) cm from the axle centre. Measure yours.
 ROBOT_OUTLINE = {
     1: [(-8, -9), (8, -9), (8, 10.5), (-8, 10.5)],
@@ -202,6 +210,7 @@ prev_right_deg = None
 turret_present = False
 turret_zero_enc = 0
 turret_angle = 0.0            # Last commanded turret angle (deg, + = right)
+glance_lead_cm = None         # cm driven between a side glance's swing start and the turret being ready to read
 
 HEADING_TO_DELTA = {
     0: (0, 1),
@@ -717,9 +726,17 @@ def get_us_cm(samples: int = 3, spacing_sec: float | None = None, extra: int = 0
     return result
 
 
+def wall_threshold(direction) -> float:
+    """House / open threshold (cm) for a reading toward `direction` ("L" / "F" / "R", or degrees from forward)."""
+    if isinstance(direction, str):
+        direction = {"L": -90.0, "F": 0.0, "R": 90.0}[direction]
+    return WALL_THRESHOLD_CM if abs(float(direction)) < 45.0 else SIDE_WALL_THRESHOLD_CM
+
+
 def glance_cm() -> float:
     """One side glance reading (turret already pointing sideways)."""
-    return get_us_cm(samples=US_GLANCE_SAMPLES, spacing_sec=0.01, extra=US_GLANCE_EXTRA, threshold=WALL_THRESHOLD_CM)
+    return get_us_cm(samples=US_GLANCE_SAMPLES, spacing_sec=0.01, extra=US_GLANCE_EXTRA,
+                     threshold=SIDE_WALL_THRESHOLD_CM)
 
 
 def turret_target_for(rel_angle_deg: float) -> float:
@@ -773,7 +790,7 @@ def check_direction_distance(rel_angle_deg: float, restore: bool = True) -> floa
     """
     if turret_present:
         set_turret_angle(turret_target_for(rel_angle_deg))
-        dist = get_us_cm(samples=US_SCAN_SAMPLES, extra=US_SCAN_EXTRA, threshold=WALL_THRESHOLD_CM)
+        dist = get_us_cm(samples=US_SCAN_SAMPLES, extra=US_SCAN_EXTRA, threshold=wall_threshold(rel_angle_deg))
         if restore and abs(rel_angle_deg) > 1.0:
             set_turret_angle(0.0)
         return dist
@@ -781,7 +798,7 @@ def check_direction_distance(rel_angle_deg: float, restore: bool = True) -> floa
         return get_us_cm(samples=US_SCAN_SAMPLES, extra=US_SCAN_EXTRA, threshold=WALL_THRESHOLD_CM)
     saved = theta
     turn_to((saved + rel_angle_deg) % 360.0)
-    dist = get_us_cm(samples=US_SCAN_SAMPLES, extra=US_SCAN_EXTRA, threshold=WALL_THRESHOLD_CM)
+    dist = get_us_cm(samples=US_SCAN_SAMPLES, extra=US_SCAN_EXTRA, threshold=wall_threshold(rel_angle_deg))
     turn_to(saved)
     return dist
 
@@ -808,7 +825,7 @@ def _side_reading_to_lateral(side: int, dist_cm: float, heading_err_deg: float) 
 
 def apply_us_lateral_fix(heading: int, tile: tuple[int, int], side: int, dist_cm: float, blend: float) -> bool:
     """Gated correction of the cross-track coordinate from one side wall reading."""
-    if not USE_US_LATERAL_FIX or dist_cm >= WALL_THRESHOLD_CM:
+    if not USE_US_LATERAL_FIX or dist_cm >= SIDE_WALL_THRESHOLD_CM:
         return False
     err = minimal_angle_diff(theta, heading)
     measured = tile_center_lateral(tile, heading) + _side_reading_to_lateral(side, dist_cm, err)
@@ -834,7 +851,7 @@ def scan_walls(heading: int, tile: tuple[int, int]) -> dict:
     out = {}
     for ang in order:
         out[names[ang]] = check_direction_distance(ang, restore=False)
-    if out["L"] < WALL_THRESHOLD_CM and out["R"] < WALL_THRESHOLD_CM and USE_US_LATERAL_FIX:
+    if out["L"] < SIDE_WALL_THRESHOLD_CM and out["R"] < SIDE_WALL_THRESHOLD_CM and USE_US_LATERAL_FIX:
         err = minimal_angle_diff(theta, heading)
         offset = 0.5 * (_side_reading_to_lateral(-1, out["L"], err) + _side_reading_to_lateral(1, out["R"], err))
         measured = tile_center_lateral(tile, heading) + offset
@@ -1148,9 +1165,12 @@ def drive_run(
     fwd_hist = []
     fwd_t = 0.0
     glanced = set()
-    glance = None                  # non-blocking glance in progress: {"j", "stage" ("out"/"back"), "t", "at"}
-    # Glance after the colour sensors have finished with the previous grid line.
-    glance_start = -TILE_SIZE / 2.0 - SENSOR_OFFSET + LINE_WINDOW_CM + 1.0
+    glance = None                  # non-blocking glance in progress: {"j", "stage" ("out"/"back"), "t", "at", "u"}
+    global glance_lead_cm
+    if side_glance is not None and glance_lead_cm is None:
+        # first glance: turret swing time (plus the settle and the readings) at line-crossing speed
+        swing = abs(turret_target_for(90.0 * side_glance)) / TURRET_DPS + 0.1
+        glance_lead_cm = math.radians(min(speed_dps, LINE_CROSS_MAX_DPS)) * WHEEL_RADIUS * swing
 
     def glance_result(j, d_side):
         nonlocal side_open_idx, u_goal, stop_reason
@@ -1158,7 +1178,7 @@ def drive_run(
         if not is_tile_in_bounds(*side_tile):
             side_status[j] = "edge"
             return
-        side_status[j] = "open" if d_side >= WALL_THRESHOLD_CM else "wall"
+        side_status[j] = "open" if d_side >= SIDE_WALL_THRESHOLD_CM else "wall"
         vizlog.emit("glance", tile=list(tiles[j]), side=side_glance, d=round(d_side, 1),
                     open=side_status[j] == "open")
         apply_us_lateral_fix(heading, tiles[j], side_glance, d_side, 0.3)
@@ -1251,7 +1271,7 @@ def drive_run(
                     if not is_tile_in_bounds(*side_tile):
                         side_status[j] = "edge"      # table edge: nothing to see, not an opening
                         continue
-                    side_status[j] = "open" if statistics.median(samples) >= WALL_THRESHOLD_CM else "wall"
+                    side_status[j] = "open" if statistics.median(samples) >= SIDE_WALL_THRESHOLD_CM else "wall"
                     if side_status[j] == "open" and j >= 1 and side_open_idx is None:
                         side_open_idx = j
                         if stop_on_side_open:
@@ -1280,16 +1300,19 @@ def drive_run(
                         vizlog.emit("wall_ahead", tile=list(wall_ahead), d=round(d, 1))
                     remaining = u_goal - u
 
-            # ---- side glance (once per tile, mid-tile) ----
+            # ---- side glance (once per tile, reading with the turret beside the middle of the side house) ----
             if side_glance is not None and glance is None:
+                # axle position (from the tile centre) to start the swing at
+                glance_start = GLANCE_AT_CM - US_FORWARD_OFFSET_CM - glance_lead_cm
                 j = int(math.floor((u - u0 - glance_start) / TILE_SIZE))
                 rel = u - (u0 + j * TILE_SIZE)
-                if (1 <= j <= n_tiles and j not in glanced and glance_start <= rel <= glance_start + 5.0
-                        and u_goal > u0 + j * TILE_SIZE + 1.0):
+                # The blocking glance pauses the loop: not while a colour sensor waits for a line
+                if (1 <= j <= n_tiles and j not in glanced and glance_start <= rel <= glance_start + 10.0
+                        and u_goal > u0 + j * TILE_SIZE + 1.0 and (GLANCE_WHILE_DRIVING or not in_window)):
                     glanced.add(j)
                     if GLANCE_WHILE_DRIVING:
                         set_turret_angle(turret_target_for(90.0 * side_glance), wait=False)
-                        glance = {"j": j, "stage": "out", "t": time.time(), "at": None}
+                        glance = {"j": j, "stage": "out", "t": time.time(), "at": None, "u": u}
                     else:
                         set_turret_angle(turret_target_for(90.0 * side_glance))
                         d_side = glance_cm()
@@ -1305,9 +1328,13 @@ def drive_run(
                     glance["at"] = time.time()
                 if glance["at"] is not None and time.time() - glance["at"] >= 0.04:   # fresh ping at the angle
                     if glance["stage"] == "out":
-                        glance_result(glance["j"], glance_cm())
-                        set_turret_angle(0.0, wait=False)
-                        glance.update(stage="back", t=time.time(), at=None)
+                        if "ready" not in glance:          # learn how far the robot drives while the turret swings
+                            glance["ready"] = u
+                            glance_lead_cm = 0.5 * glance_lead_cm + 0.5 * max(0.0, min(15.0, u - glance["u"]))
+                        if not in_window:                  # the readings pause the loop ~50 ms: not while a
+                            glance_result(glance["j"], glance_cm())  # colour sensor waits for a line
+                            set_turret_angle(0.0, wait=False)
+                            glance.update(stage="back", t=time.time(), at=None)
                     else:
                         glance = None
                         fwd_hist.clear()
@@ -1448,6 +1475,9 @@ def drive_arc_about(px: float, py: float, radius: float, h_in: float, h_out: flo
 # back: ~6 s), leave and come back on arcs of radius half a tile, round pivots inside the origin tiles (always
 # free): the robot never turns in place on the start tile and never stops on its centre.
 ORIGIN_ARCS = True            # False = the old diagonal step to / from the tile centre
+ORIGIN_S_CURVE = False        # Phase 2, first run straight on from the origin: leave on the S-curve (two 60 deg arcs).
+                              # Off (user 2026-11-25: on the robot it ended off its lane): turn in place on the
+                              # origin and take the quarter arc onto the tile instead, as Phase 1 does
 
 
 def _u(h):
@@ -1464,7 +1494,7 @@ def _origin_ways(tile):
 def origin_departure_seconds(tile, first_heading, room_ahead=False) -> float:
     """Rough time from the origin onto `tile`, ready for a run heading first_heading (for choosing the tile)."""
     if ORIGIN_ARCS and first_heading is not None and int(first_heading) % 360 in _origin_ways(tile)[0]:
-        if room_ahead and abs(minimal_angle_diff(first_heading, 0.0)) < 1:
+        if room_ahead and ORIGIN_S_CURVE and abs(minimal_angle_diff(first_heading, 0.0)) < 1:
             return 2.6                                         # S-curve, no turn
         other = (_origin_ways(tile)[0] - {int(first_heading) % 360}).pop()
         return 2.0 + abs(minimal_angle_diff(other, 0.0)) / 90.0 * EST_SEC_PER_TURN
@@ -1478,7 +1508,7 @@ def origin_departure_seconds(tile, first_heading, room_ahead=False) -> float:
 def leave_origin_on_arc(start_tile, first_heading, room_ahead=False, speed_dps=None) -> bool:
     """
     From the origin intersection onto start_tile's lane, heading first_heading, without stopping on the tile:
-      - first run straight on and the next tile known free (room_ahead, Phase 2): S-curve (two 60 deg arcs,
+      - first run straight on, the next tile known free (room_ahead, Phase 2) and ORIGIN_S_CURVE: S-curve (two 60 deg arcs,
         radius 15.24) shifts half a tile sideways in 26.4 cm and ends on the lane, 11 cm past the tile centre (the
         front then reaches ~8 cm into the next tile, so Phase 1, which doesn't know that tile yet, can't use it);
       - otherwise, first run away from the origin: turn in place on the origin if needed, then a quarter arc that
@@ -1499,7 +1529,7 @@ def leave_origin_on_arc(start_tile, first_heading, room_ahead=False, speed_dps=N
     R = TILE_SIZE / 2.0
     speed = CRUISE_DPS if speed_dps is None else speed_dps
     print(f"[NAV] Origin -> Tile {start_tile} on arcs, leaving heading {h1}")
-    if room_ahead and abs(minimal_angle_diff(h1, theta)) < 20.0:
+    if room_ahead and ORIGIN_S_CURVE and abs(minimal_angle_diff(h1, theta)) < 20.0:
         # Two arcs of radius r turning `ang` each way shift d = 2r(1 - cos ang) sideways over L = 2r sin ang.
         r, ang = R, 60.0                                       # d = 15.24, L = 26.4
         s = 1 if minimal_angle_diff(hs, h1) > 0 else -1        # first arc turns toward the side
