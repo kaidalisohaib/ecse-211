@@ -103,10 +103,11 @@ TURRET_RIGHT_DEG = 90.0       # Turret angle (deg) when looking right (above ~90
 TURRET_DPS = 400              # Turret motor speed (deg/s)
 TURRET_SETTLE_TOL_DEG = 5.0   # The turret counts as arrived when within this many degrees of its target
 TURRET_MOVE_TIMEOUT_SEC = 1.0 # Stop waiting for the turret after this long (s), even if it isn't there yet
-SIDE_RECHECK_CM = 10.5        # Standing side read below this (e.g. 7-9.5 cm next to a close front wall or cable):
-                              # unwind turret, back up SIDE_RECHECK_BACK_CM to tile centre, re-read at SIDE_RECHECK_DEG
+SIDE_RECHECK_CM = 10.5        # Standing side read still below this after US_STALE_WAIT_SEC: back up to tile centre
 SIDE_RECHECK_BACK_CM = 8.0    # Distance (cm) to back up (= US_FORWARD_OFFSET_CM: puts turret on the tile centre)
 SIDE_RECHECK_DEG = 85.0       # Turret angle (deg, +- by side) used for the backed-up confirmation read
+US_STALE_WAIT_SEC = 0.85      # EV3 US on BrickPi3 holds a stale close echo up to ~0.9s after swinging into open space:
+                              # hold turret sideways and wait this long before trusting a stationary side-wall reading
 GLANCE_WHILE_DRIVING = True   # side glances don't pause the drive loop (steering, odometry, line checks keep
                               # running while the turret swings out and back); False = old blocking glance
 US_FORWARD_OFFSET_CM = 8.0    # MEASURE: turret axis (or fixed sensor) ahead of the wheel axle
@@ -803,25 +804,36 @@ def check_direction_distance(rel_angle_deg: float, restore: bool = True, recheck
     """
     Distance (cm) in direction rel_angle_deg (-90 left, 0 forward, +90 right).
     Turret if present (mapped to TURRET_LEFT_DEG / 0 / TURRET_RIGHT_DEG), else pivots the whole robot.
-    recheck_close: in Phase 1 street stops, if a side scan reads unusually close (< SIDE_RECHECK_CM, e.g. 7-9.5 cm
-    from front-wall grazing or cable/chassis snag) or the turret stalled, unwind the turret to 0 while backing up
-    SIDE_RECHECK_BACK_CM (putting the turret at the tile centre), re-read at +-SIDE_RECHECK_DEG, and step back.
+    EV3 US on BrickPi3 can hold a stale close echo for ~0.4-0.9 s when swinging off a close front wall into
+    open space, so any stationary side reading that sees a wall waits US_STALE_WAIT_SEC while staying sideways
+    (never swinging back through 0 deg) to let the sensor flush.
+    recheck_close: if STILL < SIDE_RECHECK_CM (or turret stalled) after flushing, back up SIDE_RECHECK_BACK_CM
+    to put the turret on the tile centre, re-read at +-SIDE_RECHECK_DEG, and step back forward.
     """
     if turret_present:
         target = turret_target_for(rel_angle_deg)
         ok = set_turret_angle(target)
-        dist = get_us_cm(samples=US_SCAN_SAMPLES, extra=US_SCAN_EXTRA, threshold=wall_threshold(rel_angle_deg))
+        thresh = wall_threshold(rel_angle_deg)
+        dist = get_us_cm(samples=US_SCAN_SAMPLES, extra=US_SCAN_EXTRA, threshold=thresh)
+        if abs(rel_angle_deg) > 45.0 and US_STALE_WAIT_SEC > 0 and (dist < thresh or not ok):
+            time.sleep(US_STALE_WAIT_SEC)
+            dist2 = get_us_cm(samples=US_SCAN_SAMPLES, extra=US_SCAN_EXTRA, threshold=thresh)
+            if abs(dist2 - dist) > 2.0 or (dist < thresh <= dist2):
+                print(f"  [US] stale side echo flushed @ {target:+.0f} deg: {dist:.1f} -> {dist2:.1f} cm")
+            dist = dist2
         if recheck_close and abs(rel_angle_deg) > 45.0 and SIDE_RECHECK_CM > 0 and (dist < SIDE_RECHECK_CM or not ok):
             saved_h = theta
             pos = turret_motor.get_position()
             act = (pos - turret_zero_enc) / TURRET_GEAR_RATIO if pos is not None else target
             recheck_target = math.copysign(SIDE_RECHECK_DEG, rel_angle_deg)
             print(f"  [US] close/stalled side read ({dist:.1f} cm @ {target:+.0f} deg, enc {act:+.0f} deg): "
-                  f"unwinding & backing {SIDE_RECHECK_BACK_CM:.0f} cm to confirm @ {recheck_target:+.0f} deg")
-            set_turret_angle(0.0, wait=False)
+                  f"backing {SIDE_RECHECK_BACK_CM:.0f} cm to confirm @ {recheck_target:+.0f} deg")
+            set_turret_angle(recheck_target, wait=False)
             drive_straight_distance(SIDE_RECHECK_BACK_CM, forward=False, hold_heading=saved_h, speed_dps=160)
             set_turret_angle(recheck_target)
-            dist = get_us_cm(samples=US_SCAN_SAMPLES, extra=US_SCAN_EXTRA, threshold=wall_threshold(rel_angle_deg))
+            if US_STALE_WAIT_SEC > 0:
+                time.sleep(US_STALE_WAIT_SEC)
+            dist = get_us_cm(samples=US_SCAN_SAMPLES, extra=US_SCAN_EXTRA, threshold=thresh)
             pos2 = turret_motor.get_position()
             act2 = (pos2 - turret_zero_enc) / TURRET_GEAR_RATIO if pos2 is not None else recheck_target
             drive_straight_distance(SIDE_RECHECK_BACK_CM, forward=True, hold_heading=saved_h, speed_dps=160)
