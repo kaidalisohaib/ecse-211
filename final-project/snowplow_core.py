@@ -52,8 +52,8 @@ ULTRASONIC_PORT = 4           # Turret ultrasonic (Phase 1) / fixed ultrasonic (
 # ==================== GEOMETRY & CALIBRATION CONSTANTS ====================
 TILE_SIZE = 30.48             # Size of one grid tile (cm), 12 in
 WHEEL_RADIUS = 2.10           # Overridden by calibration_params.json
-LEFT_WHEEL_SCALE = 1.0000     # Left wheel distance multiplier (1 = nominal; the auto-tuner writes it to calibration_params.json)
-RIGHT_WHEEL_SCALE = 1.0000    # Right wheel distance multiplier (1 = nominal; the auto-tuner writes it to calibration_params.json)
+LEFT_WHEEL_SCALE = 1.0090     # Left wheel distance multiplier (+0.9%/-0.9% cancels +2.4 deg/tile CW drift)
+RIGHT_WHEEL_SCALE = 0.9910    # Right wheel distance multiplier (sum = 2.000 leaves in-place turns unchanged)
 TRACK_WIDTH = 13.45           # measured 2026-11-24: tyre centre-to-centre ((11.4 inner + 15.5 outer) / 2).
 TRACK_WIDTH_CW = 13.45        # calibration_params.json overrides these three if present
 TRACK_WIDTH_CCW = 13.45       # Track width used for counter-clockwise (left) turns (cm)
@@ -64,7 +64,7 @@ TRACK_WIDTH_CCW = 13.45       # Track width used for counter-clockwise (left) tu
 SENSOR_OFFSET_BY_PHASE = {1: -5.0, 2: -5.0}   # measured 2026-11-24: 5 cm behind the axle
 SENSOR_OFFSET = SENSOR_OFFSET_BY_PHASE[1]   # set by init_hardware(phase)
 SENSOR_SPACING = 14.0         # measured 2026-11-24: 14 cm centre-to-centre between the two colour sensors
-SENSOR_SKEW_DEG = 0.5          # Colour sensor bar angle bias (deg): + = left sensor triggers ahead of right
+SENSOR_SKEW_DEG = -0.5        # Colour sensor bar angle bias (deg): + = left sensor triggers ahead of right
                               # (fixes steady LEFT drift after snaps); - = right triggers ahead (fixes RIGHT drift)
 LINE_THRESHOLD = 24           # Reflected red below this = black line
 LINE_WINDOW_CM = 7.0          # Only look for a line within +-7.0 cm of where odometry expects it
@@ -1447,7 +1447,7 @@ def drive_run(
 # Phase 2 can't turn in place next to a house, so it drives round the inside house corner on an arc. Slightly
 # inside the tile centreline: the funnel's outer tip and round back swing outward during the turn. Funnel,
 # ideal arc: clearance inside = radius - 12, outside 3.0 / 2.5 / 1.8 cm at 14 / 14.5 / 15.24; sim lowest 1.69 cm at 14.5.
-ARC_RADIUS_CM = 14.5          # axle path radius around the inside house corner (15.24 = tile centreline)
+ARC_RADIUS_CM = 15.5          # axle path radius around the inside house corner (15.24 = tile centreline)
 ARC_MAX_DPS = 220             # Speed cap (centre wheel dps) on tight corner/origin arcs to prevent outer-wheel slip
 ARC_K_RADIAL_DEG_PER_CM = 4.0 # heading correction per cm off the arc
 ARC_MAX_CORR_DEG = 15.0       # Most heading correction (deg) used to stay on an arc
