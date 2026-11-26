@@ -45,8 +45,8 @@ DUMP_PORT = "A"               # Phase 2: bin tilt (dump)
 ROLLER_MOTOR_PORT = "B"       # Phase 2: pinch belt (conveyor)
 DRIVE_POLARITY = -1           # -1 = drive motors mounted backwards (positive dps drives in reverse). bench_tests [2]
 
-LEFT_COLOR_PORT = 1           # Downward left colour sensor
-RIGHT_COLOR_PORT = 2          # Downward right colour sensor
+LEFT_COLOR_PORT = 3           # Downward left colour sensor
+RIGHT_COLOR_PORT = 1          # Downward right colour sensor
 ULTRASONIC_PORT = 4           # Turret ultrasonic (Phase 1) / fixed ultrasonic (Phase 2, optional)
 
 # ==================== GEOMETRY & CALIBRATION CONSTANTS ====================
@@ -64,9 +64,9 @@ TRACK_WIDTH_CCW = 13.45       # Track width used for counter-clockwise (left) tu
 SENSOR_OFFSET_BY_PHASE = {1: -5.0, 2: -5.0}   # measured 2026-11-24: 5 cm behind the axle
 SENSOR_OFFSET = SENSOR_OFFSET_BY_PHASE[1]   # set by init_hardware(phase)
 SENSOR_SPACING = 14.0         # measured 2026-11-24: 14 cm centre-to-centre between the two colour sensors
-SENSOR_SKEW_DEG = 0.0         # Colour sensor bar angle bias (deg): + = left sensor triggers ahead of right
+SENSOR_SKEW_DEG = -1.5         # Colour sensor bar angle bias (deg): + = left sensor triggers ahead of right
                               # (fixes steady LEFT drift after snaps); - = right triggers ahead (fixes RIGHT drift)
-LINE_THRESHOLD = 30           # Reflected red below this = black line
+LINE_THRESHOLD = 24           # Reflected red below this = black line
 LINE_WINDOW_CM = 7.0          # Only look for a line within +-7.0 cm of where odometry expects it
 LINE_SQUARE_MODE = "flying"   # "flying" = keep driving and estimate heading from the travel gap between hits (the
                               # last mode tested on the robot, 2026-11-24; sim ~4 s faster per phase than "stop");
