@@ -130,8 +130,9 @@ US_LATERAL_BLEND_STOPPED = 0.7# Side-wall position fix, standing: fraction of th
 US_LATERAL_BLEND_MOVING = 0.15# Side-wall position fix, while driving: fraction applied per reading (0-1)
 SIDE_SAMPLE_WINDOW = (-10.0, 4.0)  # Sample a tile's side wall while the sensor is this far (cm) from its centre
 MAX_RUN_TILES = 5             # "side" explore mode: never trust one forward reading for more than this many tiles
-FORWARD_STOP_CM = 45.0        # Forward watch: a reading below this means "house within the next tile or so";
-                              # stop on the tile centre just before it. Only close readings are trusted.
+FORWARD_STOP_CM = 30.0        # Forward watch: a reading below this means "house in the next tile";
+                              # stop on the tile centre just before it (~23 cm before the stop, >3x DECEL_DIST_CM,
+                              # and narrow enough cone to avoid clipping side-wall corners at 40-45 cm).
 GLANCE_SEC_EST = 0.6          # Rough duration of one side glance (turret out and back)
 GLANCE_AT_CM = 4.0            # Side glance while driving: the turret axis is this far past the tile centre when it
                               # reads. The swing starts early by the distance the robot drives while the turret
