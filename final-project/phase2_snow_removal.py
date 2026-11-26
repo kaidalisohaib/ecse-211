@@ -59,7 +59,7 @@ DROP_LANE_GAIN = 5.0              # last drop-off run: cross-track deg per cm (d
 DROP_MAX_STEER_DEG = 15.0         # ...and its steering limit (default 6)
 SPIN_SHIFT_CM = 3.0               # turn in place this far from the centre, away from a house beside the tile
 ARC_CORNERS = True                # drive street corners on an arc (square intake can't spin there)
-ARC_EVERY_TURN = True             # transit: arc every 90 deg turn too (sim: -5 s P2, same home error); False = only next to houses
+ARC_EVERY_TURN = False            # False = only arc next to houses (open transit turns like (0,1) drive to centre so they snap on the grid line first); True = arc every 90 deg turn
 ARC_RADIUS_MIN_CM = 12.0          # an arc sized to end on a drop-off lane (arc_radius_for): limits when no house is
 ARC_RADIUS_MAX_CM = 19.0          # on the inside diagonal / outside the corner (wheels stay 5 cm inside the tile)
 CORNER_POKE_CM = 0.0              # before each arc, sweep straight into the corner's outer part and back (0 = off).

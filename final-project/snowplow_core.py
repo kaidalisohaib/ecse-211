@@ -1522,7 +1522,7 @@ def drive_arc_about(px: float, py: float, radius: float, h_in: float, h_out: flo
 # The origin is a grid corner, not a tile centre. Instead of the diagonal step (turn 45, crawl 21.6 cm, turn
 # back: ~6 s), leave and come back on arcs of radius half a tile, round pivots inside the origin tiles (always
 # free): the robot never turns in place on the start tile and never stops on its centre.
-ORIGIN_ARCS = True            # False = the old diagonal step to / from the tile centre
+ORIGIN_ARCS = False           # False = diagonal step to / from the tile centre (avoids ~4 deg tight-arc scrub on the real robot)
 ORIGIN_S_CURVE = False        # Phase 2, first run straight on from the origin: leave on the S-curve (two 60 deg arcs).
                               # Off (user 2026-11-25: on the robot it ended off its lane): turn in place on the
                               # origin and take the quarter arc onto the tile instead, as Phase 1 does
