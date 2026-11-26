@@ -99,13 +99,14 @@ MAX_LATERAL_STEER_DEG = 6.0   # Most the robot steers (deg) to get back onto its
 USE_TURRET = True             # Phase 1 hardware has the turret (TURRET_PORT)
 TURRET_GEAR_RATIO = 1.0       # motor degrees per turret degree
 TURRET_LEFT_DEG = -110.0      # Turret angle (deg) when looking left (replaces -90; tune for gear slack / cable)
-TURRET_RIGHT_DEG = 98.0       # Turret angle (deg) when looking right (physical right limit ~99 deg on the robot)
+TURRET_RIGHT_DEG = 90.0       # Turret angle (deg) when looking right (above ~90 deg hits cable/stop on the robot)
 TURRET_DPS = 400              # Turret motor speed (deg/s)
 TURRET_SETTLE_TOL_DEG = 5.0   # The turret counts as arrived when within this many degrees of its target
 TURRET_MOVE_TIMEOUT_SEC = 1.0 # Stop waiting for the turret after this long (s), even if it isn't there yet
-SIDE_RECHECK_CM = 10.5        # Standing side read below this (e.g. 8-9 cm next to a close front wall): back up
-                              # SIDE_RECHECK_BACK_CM to clear the front wall/cable, re-aim, and confirm (0 = off)
-SIDE_RECHECK_BACK_CM = 4.0    # Distance (cm) to back up and return when re-checking an unusually close side read
+SIDE_RECHECK_CM = 10.5        # Standing side read below this (e.g. 7-9.5 cm next to a close front wall or cable):
+                              # unwind turret, back up SIDE_RECHECK_BACK_CM to tile centre, re-read at SIDE_RECHECK_DEG
+SIDE_RECHECK_BACK_CM = 8.0    # Distance (cm) to back up (= US_FORWARD_OFFSET_CM: puts turret on the tile centre)
+SIDE_RECHECK_DEG = 85.0       # Turret angle (deg, +- by side) used for the backed-up confirmation read
 GLANCE_WHILE_DRIVING = True   # side glances don't pause the drive loop (steering, odometry, line checks keep
                               # running while the turret swings out and back); False = old blocking glance
 US_FORWARD_OFFSET_CM = 8.0    # MEASURE: turret axis (or fixed sensor) ahead of the wheel axle
@@ -783,7 +784,7 @@ def set_turret_angle(rel_angle_deg: float, wait: bool = True) -> bool:
     if not arrived and pos is not None:
         actual_deg = (pos - turret_zero_enc) / TURRET_GEAR_RATIO
         err_deg = abs(actual_deg - angle)
-        if err_deg > 10.0:
+        if err_deg > TURRET_SETTLE_TOL_DEG:
             print(f"  [TURRET] timeout aiming {angle:+.0f} deg (at {actual_deg:+.0f} deg)")
         return err_deg <= 15.0
     return True
@@ -802,9 +803,9 @@ def check_direction_distance(rel_angle_deg: float, restore: bool = True, recheck
     """
     Distance (cm) in direction rel_angle_deg (-90 left, 0 forward, +90 right).
     Turret if present (mapped to TURRET_LEFT_DEG / 0 / TURRET_RIGHT_DEG), else pivots the whole robot.
-    recheck_close: in Phase 1 street stops, if a side scan reads unusually close (< SIDE_RECHECK_CM, e.g. 8-9 cm
-    when stopped next to a front wall) or the turret stalled, back up SIDE_RECHECK_BACK_CM into the clear street
-    behind, re-aim the turret, re-read, and step back forward.
+    recheck_close: in Phase 1 street stops, if a side scan reads unusually close (< SIDE_RECHECK_CM, e.g. 7-9.5 cm
+    from front-wall grazing or cable/chassis snag) or the turret stalled, unwind the turret to 0 while backing up
+    SIDE_RECHECK_BACK_CM (putting the turret at the tile centre), re-read at +-SIDE_RECHECK_DEG, and step back.
     """
     if turret_present:
         target = turret_target_for(rel_angle_deg)
@@ -812,13 +813,19 @@ def check_direction_distance(rel_angle_deg: float, restore: bool = True, recheck
         dist = get_us_cm(samples=US_SCAN_SAMPLES, extra=US_SCAN_EXTRA, threshold=wall_threshold(rel_angle_deg))
         if recheck_close and abs(rel_angle_deg) > 45.0 and SIDE_RECHECK_CM > 0 and (dist < SIDE_RECHECK_CM or not ok):
             saved_h = theta
-            print(f"  [US] close/stalled side read ({dist:.1f} cm @ {target:+.0f} deg): "
-                  f"backing {SIDE_RECHECK_BACK_CM:.0f} cm to confirm")
+            pos = turret_motor.get_position()
+            act = (pos - turret_zero_enc) / TURRET_GEAR_RATIO if pos is not None else target
+            recheck_target = math.copysign(SIDE_RECHECK_DEG, rel_angle_deg)
+            print(f"  [US] close/stalled side read ({dist:.1f} cm @ {target:+.0f} deg, enc {act:+.0f} deg): "
+                  f"unwinding & backing {SIDE_RECHECK_BACK_CM:.0f} cm to confirm @ {recheck_target:+.0f} deg")
+            set_turret_angle(0.0, wait=False)
             drive_straight_distance(SIDE_RECHECK_BACK_CM, forward=False, hold_heading=saved_h, speed_dps=160)
-            set_turret_angle(target)
+            set_turret_angle(recheck_target)
             dist = get_us_cm(samples=US_SCAN_SAMPLES, extra=US_SCAN_EXTRA, threshold=wall_threshold(rel_angle_deg))
+            pos2 = turret_motor.get_position()
+            act2 = (pos2 - turret_zero_enc) / TURRET_GEAR_RATIO if pos2 is not None else recheck_target
             drive_straight_distance(SIDE_RECHECK_BACK_CM, forward=True, hold_heading=saved_h, speed_dps=160)
-            print(f"  [US] confirmed side read: {dist:.1f} cm")
+            print(f"  [US] confirmed side read: {dist:.1f} cm (enc {act2:+.0f} deg)")
         if restore and abs(rel_angle_deg) > 1.0:
             set_turret_angle(0.0)
         return dist
