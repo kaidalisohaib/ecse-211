@@ -78,7 +78,7 @@ MAX_SNAP_HEADING_DEG = 18.0   # Reject heading snaps / stop-square pivots larger
                               # Must stay above the worst real error: an uncalibrated U-turn is easily 10 deg off.
 
 # ==================== MOTION PROFILE & CONTROL GAINS (TUNE) ====================
-CRUISE_DPS = 360              # Transit speed (~13.2 cm/s)
+CRUISE_DPS = 420              # Transit speed (~15.4 cm/s; still caps at LINE_CROSS_MAX_DPS across grid lines)
 EXPLORE_DPS = 320             # Phase 1 runs inside the street
 SWEEP_DPS = 170               # Phase 2 sweeping speed (roller catch rate decides this; bench-test it)
 MIN_DRIVE_DPS = 50            # Launch / final creep speed
@@ -86,7 +86,7 @@ LINE_CROSS_MAX_DPS = 280      # Speed cap while a colour sensor is inside a line
 ACCEL_RAMP_SEC = 0.30         # Time (s) to ramp from standstill up to full speed at the start of a run
 DECEL_DIST_CM = 7.0           # Decelerate over the last 7 cm of a run (only at run ends now)
 
-TURN_DPS_MAX = 240            # Peak in-place turn wheel speed (~84 deg/s of robot rotation)
+TURN_DPS_MAX = 280            # Peak in-place turn wheel speed (~98 deg/s of robot rotation)
 TURN_DPS_MIN = 40             # Slowest wheel speed (deg/s) in an in-place turn, so the end of the turn doesn't stall
 KP_TURN = 5.0                 # wheel dps per degree of heading error
 TURN_TOLERANCE_DEG = 0.8      # An in-place turn is done when the heading is within this many degrees
@@ -1448,7 +1448,7 @@ def drive_run(
 # inside the tile centreline: the funnel's outer tip and round back swing outward during the turn. Funnel,
 # ideal arc: clearance inside = radius - 12, outside 3.0 / 2.5 / 1.8 cm at 14 / 14.5 / 15.24; sim lowest 1.69 cm at 14.5.
 ARC_RADIUS_CM = 15.5          # axle path radius around the inside house corner (15.24 = tile centreline)
-ARC_MAX_DPS = 220             # Speed cap (centre wheel dps) on tight corner/origin arcs to prevent outer-wheel slip
+ARC_MAX_DPS = 260             # Speed cap (centre wheel dps) on tight corner arcs to prevent outer-wheel slip
 ARC_K_RADIAL_DEG_PER_CM = 4.0 # heading correction per cm off the arc
 ARC_MAX_CORR_DEG = 15.0       # Most heading correction (deg) used to stay on an arc
 ARC_KP_HEADING = 4.0          # wheel dps of differential per degree of heading error on the arc

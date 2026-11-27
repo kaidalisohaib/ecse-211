@@ -224,7 +224,13 @@ def drop_runs(current, plan, blocked, known, heading):
         t = tile_step(t, h, n)
     starts.append(t)
     lanes = [0.0] * len(runs)
+    # Only pre-shift the whole edge run (and the turn onto it) when the final run is short (1 tile): on a
+    # multi-tile run (>= 2 tiles), cruise down the safe tile centreline and shift onto the edge lane only on
+    # the final tile before pouring so the robot isn't hugging the table cliff while cruising.
+    late_shift = bool(runs and runs[-1][1] >= 2 and abs(lane) > 0.1)
     for i, (h, n) in enumerate(runs):
+        if late_shift and i < len(runs) - 1:
+            continue
         on_line = abs(core.tile_center_lateral(starts[i], h_last) - drop_line) < 1.0
         if on_line and h == h_last:
             lanes[i] = lane
@@ -232,6 +238,8 @@ def drop_runs(current, plan, blocked, known, heading):
             lanes[i] = -lane
     ends = [0.0] * len(runs)
     for i in range(len(runs) - 1):
+        if late_shift and i == len(runs) - 2:
+            continue
         h, hn = runs[i][0], runs[i + 1][0]
         if lanes[i + 1] and h == (hn + 90) % 360:
             ends[i] = lanes[i + 1]
@@ -288,15 +296,24 @@ def drive_to_dump_and_pour(current, plan, blocked, known, _tries=3):
                 end = stop_at - TURN_LANE_RUN_CM - core.tile_center_along(tile, heading)
                 back_out(tile, heading, lane_offset_cm=lanes[i], end_along_offset_cm=end if room else max(0.0, end))
         if last:
-            # The last run is often one tile: steer harder so the lane offset is reached before the stop. A longer
-            # one cruises until its last tile.
-            res = drive_run(tile, heading, n, CRUISE_DPS, lane_offset_cm=lanes[i],
-                            end_along_offset_cm=last_end, lane_gain=DROP_LANE_GAIN,
-                            max_steer_deg=DROP_MAX_STEER_DEG, approach_cm=DROP_APPROACH_CM,
-                            approach_dps=DROP_APPROACH_DPS)
+            # The last run is often one tile: steer harder so the lane offset is reached before the stop. On a
+            # multi-tile run (>= 2 tiles), cruise on the safe tile centreline and only glide onto the edge lane
+            # over the final tile (DROP_APPROACH_CM + 12 cm lead) so the robot stays away from the cliff.
+            if n >= 2 and abs(lanes[i]) > 0.1:
+                res = drive_run(tile, heading, n, CRUISE_DPS, lane_offset_cm=0.0,
+                                end_lane_offset_cm=lanes[i], end_lane_lead_cm=DROP_APPROACH_CM + 12.0,
+                                end_along_offset_cm=last_end, lane_gain=DROP_LANE_GAIN,
+                                max_steer_deg=DROP_MAX_STEER_DEG, approach_cm=DROP_APPROACH_CM,
+                                approach_dps=DROP_APPROACH_DPS)
+            else:
+                res = drive_run(tile, heading, n, CRUISE_DPS, lane_offset_cm=lanes[i],
+                                end_along_offset_cm=last_end, lane_gain=DROP_LANE_GAIN,
+                                max_steer_deg=DROP_MAX_STEER_DEG, approach_cm=DROP_APPROACH_CM,
+                                approach_dps=DROP_APPROACH_DPS)
         elif _arc_here(starts[i + 1], heading, runs[i + 1][0]):
             nxt = runs[i + 1][0]
-            r = arc_radius_for(starts[i + 1], heading, nxt, lanes[i + 1], blocked)
+            next_lane = 0.0 if (i == len(runs) - 2 and runs[-1][1] >= 2) else lanes[i + 1]
+            r = arc_radius_for(starts[i + 1], heading, nxt, next_lane, blocked)
             res = drive_run(tile, heading, n, CRUISE_DPS, lane_offset_cm=lanes[i],
                             end_lane_offset_cm=core.arc_lane_offset(heading, nxt, r),
                             end_along_offset_cm=-core.TILE_SIZE / 2.0)
@@ -353,7 +370,7 @@ def recentre_along(tile, heading, blocked, offset_cm=None):
     shift = spin_shift(tile, heading, blocked)[0] if offset_cm is None else offset_cm
     off = (core.tile_center_along(tile, heading) + shift) - core.get_along(heading)
     if abs(off) > 0.5:
-        core.drive_straight_distance(abs(off), forward=off > 0, hold_heading=heading, speed_dps=150)
+        core.drive_straight_distance(abs(off), forward=off > 0, hold_heading=heading, speed_dps=240)
 
 
 def leave_dropoff(tile, heading, blocked, known, home_tiles):
@@ -427,12 +444,13 @@ def _arc_here(corner, h_in, h_out) -> bool:
             and abs(abs(core.minimal_angle_diff(h_out, h_in)) - 90) < 1)
 
 
-def travel(current, targets, blocked, known, speed_dps=CRUISE_DPS, then_heading=None):
+def travel(current, targets, blocked, known, speed_dps=CRUISE_DPS, then_heading=None, recenter_first=False):
     """Phase 2 transit (no obstacle checks: the map is known). Like navigate_tile_with_obstacle_avoidance,
     but never turns in place on a tile with a house beside it: the planner avoids U-turns and starting turns
     there, and 90 deg turns there are driven as arcs. targets: a tile or a list of tiles.
     then_heading: the heading the robot leaves the target in (the street entrance): a 90 deg turn there on a
-    tile with a house beside it is driven as an arc too, ending on the way out."""
+    tile with a house beside it is driven as an arc too, ending on the way out.
+    recenter_first: pull quickly back off the drop-off edge lane onto the tile centreline on the first run."""
     targets = [tuple(targets)] if isinstance(targets[0], int) else [tuple(t) for t in targets]
     for _ in range(4):                       # re-plan if a run ends early (timeout)
         if current in targets:
@@ -453,20 +471,22 @@ def travel(current, targets, blocked, known, speed_dps=CRUISE_DPS, then_heading=
         for i, (heading, n) in enumerate(runs):
             corner = tile_step(tile, heading, n)
             nxt = runs[i + 1][0] if i + 1 < len(runs) else then_heading
+            steer_kw = {"lane_gain": 3.5, "max_steer_deg": 14.0} if (recenter_first and i == 0) else {}
             if nxt is not None and _arc_here(corner, heading, nxt):
                 res = drive_run(tile, heading, n, speed_dps, end_lane_offset_cm=core.arc_lane_offset(heading, nxt),
-                                end_along_offset_cm=-core.TILE_SIZE / 2.0)
+                                end_along_offset_cm=-core.TILE_SIZE / 2.0, **steer_kw)
                 if res["stop_reason"] != "end":
                     tile, early = core.cm_to_nearest_tile(core.x, core.y), True
                     break
                 tile = core.drive_arc(corner, heading, nxt, speed_dps)
             else:
-                res = drive_run(tile, heading, n, speed_dps)
+                res = drive_run(tile, heading, n, speed_dps, **steer_kw)
                 tile = res["tile"]
                 if res["stop_reason"] != "end":
                     early = True
                     break
         current = tile
+        recenter_first = False
         if not early:
             break
     return current
@@ -612,7 +632,8 @@ def run_phase2():
         dp = drop_runs(route[-1], plan, blocked, known, h_end)
         if dp[1] and _arc_here(route[-1], h_end, dp[1][0][0]):
             nexts[-1] = dp[1][0][0]
-            radii[-1] = arc_radius_for(route[-1], h_end, nexts[-1], dp[3][0], blocked)
+            first_lane = 0.0 if (len(dp[1]) == 1 and dp[1][0][1] >= 2) else dp[3][0]
+            radii[-1] = arc_radius_for(route[-1], h_end, nexts[-1], first_lane, blocked)
     arcs = [ARC_CORNERS and nexts[i] is not None and abs(abs(core.minimal_angle_diff(nexts[i], h)) - 90) < 1
             for i, (h, n) in enumerate(runs)]
     if route:
@@ -714,7 +735,7 @@ def run_phase2():
     # The last step onto the origin turns in place on the home tile: avoid one with a house beside it.
     home_tiles = [t for t in home_tiles if t not in TIGHT] or home_tiles
     current = leave_dropoff(current, int(round(core.theta / 90.0)) * 90 % 360, blocked, known, home_tiles)
-    current = travel(current, home_tiles, blocked, known)
+    current = travel(current, home_tiles, blocked, known, recenter_first=True)
     step_tile_to_origin()
 
     total = time.time() - phase_start
